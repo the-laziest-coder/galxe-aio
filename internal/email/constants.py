@@ -2,6 +2,7 @@ IMAP_SERVERS = {
     'outlook.com': 'imap-mail.outlook.com',
     'hotmail.com': 'imap-mail.outlook.com',
     'rambler.ru': 'imap.rambler.ru',
+    'mail.ru': 'imap.mail.ru',
 }
 
 FOLDERS = ['INBOX', 'JUNK']
