@@ -518,17 +518,27 @@ class GalxeAccount:
         claim_data = await self.client.prepare_participate(campaign['id'], captcha, campaign['chain'])
 
         claimed_points = 0
+        claimed_oats = 0
         match reward_type:
             case 'Points':
                 if claim_data.get('loyaltyPointsTxResp'):
                     claimed_points = claim_data['loyaltyPointsTxResp'].get('TotalClaimedPoints')
             case 'Oat':
-                raise Exception(f'Oat reward type is not supported for claim yet')
+                if campaign['gasType'] == 'Gasless':
+                    claimed_oats = len(claim_data['mintFuncInfo']['verifyIDs'])
+                else:
+                    raise Exception(f'Only gasless OAT reward type is supported for claim')
             case unexpected:
                 raise Exception(f'{unexpected} reward type is not supported for claim yet')
 
         claimed_log = f'{claimed_points} points' if claimed_points > 0 else ''
+        claimed_log += f'{claimed_oats} OAT' if claimed_oats > 0 else ''
+        if claimed_oats > 1:
+            claimed_log += 's'
 
         logger.success(f'{self.idx}) Campaign {campaign["name"]} claimed {claimed_log}')
 
-        return ('Points', claimed_points) if claimed_points > 0 else None
+        result = ('Points', claimed_points) if claimed_points > 0 else None
+        result = ('OATs', claimed_oats) if claimed_oats > 0 else result
+
+        return result
