@@ -3,7 +3,7 @@
  - Link Twitter account
  - Link email: IMAP or mail3.me
  - Complete Galxe tasks
- - Claim Galxe points
+ - Claim Galxe points and gas-less OATs
  - Quiz solver
  - Accounts statistics
 
