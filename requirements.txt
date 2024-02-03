@@ -1,0 +1,15 @@
+aiofiles==23.2.1
+aiohttp==3.8.4
+aiohttp_socks==0.8.4
+aioimaplib==1.0.1
+colorama==0.4.6
+curl_cffi==0.6.0b7
+dataclasses_json==0.6.3
+eth_account==0.10.0
+Faker==22.6.0
+loguru==0.7.0
+playwright==1.40.0
+retry==0.9.2
+termcolor==2.4.0
+toml==0.10.2
+web3==6.13.0
