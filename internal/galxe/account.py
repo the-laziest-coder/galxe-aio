@@ -128,9 +128,9 @@ class GalxeAccount:
     async def refresh_profile(self):
         self.profile = await self.client.basic_user_info()
 
-    async def link_twitter(self):
+    async def link_twitter(self, fake_twitter=FAKE_TWITTER):
         existed_twitter_username = self.profile.get('twitterUserName', '')
-        if existed_twitter_username != '' and FAKE_TWITTER:
+        if existed_twitter_username != '' and fake_twitter:
             return
 
         if self.twitter is None:
@@ -252,7 +252,14 @@ class GalxeAccount:
         try_again = False
         for condition, credential in zip(cred_group['conditions'], cred_group['credentials']):
             try:
-                await self._complete_credential(campaign_id, condition, credential)
+                try:
+                    await self._complete_credential(campaign_id, condition, credential, FAKE_TWITTER)
+                except Exception as exc:
+                    if FAKE_TWITTER and 'Error: pass_token used' in str(exc):
+                        logger.info(f"{self.idx}) Probably can't complete with fake twitter. Trying without it")
+                        await self._complete_credential(campaign_id, condition, credential, False)
+                    else:
+                        raise exc
             except Exception as e:
                 if 'try again in 30 seconds' in str(e):
                     try_again = True
@@ -260,13 +267,13 @@ class GalxeAccount:
             await wait_a_bit()
         return try_again
 
-    async def _complete_credential(self, campaign_id: str, condition, credential):
+    async def _complete_credential(self, campaign_id: str, condition, credential, fake_twitter):
         if condition['eligible']:
             return
 
         match credential['type']:
             case 'TWITTER':
-                need_verify = await self._complete_twitter(credential)
+                need_verify = await self._complete_twitter(credential, fake_twitter)
             case 'EMAIL':
                 need_verify = await self._complete_email(credential)
             case 'EVM_ADDRESS':
@@ -282,9 +289,9 @@ class GalxeAccount:
             await self._verify_credential(campaign_id, credential['id'], credential['type'])
             logger.info(f'{self.idx}) Verified "{credential["name"]}"')
 
-    async def _complete_twitter(self, credential) -> bool:
-        await self.link_twitter()
-        if FAKE_TWITTER:
+    async def _complete_twitter(self, credential, fake_twitter) -> bool:
+        await self.link_twitter(fake_twitter)
+        if fake_twitter:
             return True
         try:
             match credential['credSource']:
@@ -328,9 +335,8 @@ class GalxeAccount:
             case 'SPACE_USERS':
                 await self._follow_space(campaign_id, credential['id'])
             case unexpected:
-                if HIDE_UNSUPPORTED:
-                    return False
-                raise Exception(f'{unexpected} credential source for Galxe ID task is not supported yet')
+                if not HIDE_UNSUPPORTED:
+                    raise Exception(f'{unexpected} credential source for Galxe ID task is not supported yet')
         return False
 
     async def _follow_space(self, campaign_id: str, credential_id):
@@ -339,7 +345,7 @@ class GalxeAccount:
         space_id = int(space['id'])
         if not space['isFollowing']:
             await self.client.follow_space(space_id)
-            logger.info(f'{self.idx} Space {space["name"]} followed')
+            logger.info(f'{self.idx}) Space {space["name"]} followed')
         sync_options = self._default_sync_options(credential_id)
         eval_expr = sync_options.copy()
         eval_expr.update({

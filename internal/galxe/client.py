@@ -315,5 +315,5 @@ class Client(TLSClient):
         }
         return await self.api_request(
             body,
-            exc_condition=lambda r: not r['data']['syncEvaluateCredentialValue']['result'],
+            exc_condition=lambda r: not r['data']['syncEvaluateCredentialValue'],
         )
