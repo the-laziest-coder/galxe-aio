@@ -26,6 +26,7 @@ class IMAPClient(BaseClient):
         self.imap = aioimaplib.IMAP4_SSL(IMAP_SERVERS[self.account.email_username.split('@')[1]])
         await self.imap.wait_hello_from_server()
         await self.imap.login(self.account.email_username, self.account.email_password)
+        await self.imap.select()
 
     async def _find_email(self, folder: str, subject_condition_func) -> Optional[str]:
         _, messages = await self.imap.select(folder)
