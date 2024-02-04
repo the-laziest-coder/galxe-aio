@@ -26,7 +26,7 @@ async def check_account(account_data: Tuple[int, Tuple[str, str, str]]):
     address = EthAccount().from_key(evm_wallet).address
     logger.info(f'{idx}) Processing {address}')
 
-    account_info = AccountInfo(address=address, proxy=proxy, twitter_auth_token=twitter_token)
+    account_info = AccountInfo(evm_address=address, proxy=proxy, twitter_auth_token=twitter_token)
 
     if '|' in account_info.proxy:
         change_link = account_info.proxy.split('|')[1]
