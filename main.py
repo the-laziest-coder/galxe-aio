@@ -79,7 +79,7 @@ async def process_account(account_data: Tuple[int, Tuple[str, str, str, str, str
             await wait_a_bit()
 
             campaigns = [(c_id, 0) for c_id in GALXE_CAMPAIGN_IDS]
-            for i in range(MAX_TRIES):
+            for i in range(max(MAX_TRIES, 3)):
                 if len(campaigns) == 0:
                     break
                 if i > 0:
