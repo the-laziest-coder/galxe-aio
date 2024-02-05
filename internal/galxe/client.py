@@ -343,3 +343,16 @@ class Client(TLSClient):
             body,
             exc_condition=lambda r: not r['data']['syncEvaluateCredentialValue'],
         )
+
+    async def verify_credentials(self, cred_ids):
+        body = {
+            'operationName': 'VerifyCredentials',
+            'query': 'mutation VerifyCredentials($input: VerifyCredentialsInput!) {\n  verifyCredentials(input: $input)\n}\n',
+            'variables': {
+                'input': {
+                    'address': self.address,
+                    'credIds': cred_ids,
+                },
+            },
+        }
+        return await self.api_request(body)

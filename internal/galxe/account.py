@@ -286,16 +286,22 @@ class GalxeAccount:
     async def _process_campaign(self, campaign_id, process_async_func, aggr_func=None):
         info = await self.client.get_campaign_info(campaign_id)
         self._update_campaign_points(info)
+
         if self._is_parent_campaign(info):
             results = [await self._process_campaign(child['id'], process_async_func, aggr_func)
                        for child in info['childrenCampaigns']]
             if aggr_func is None:
                 return
             return aggr_func(results)
+
         if campaign_id not in self.account.actual_campaigns:
             self.account.actual_campaigns.append(campaign_id)
+        if await self.verify_all_credentials(info):
+            info = await self.client.get_campaign_info(campaign_id)
+
         result = await process_async_func(info)
         await wait_a_bit(2)
+
         info = await self.client.get_campaign_info(campaign_id)
         self._update_campaign_points(info, result)
         return result
@@ -311,7 +317,6 @@ class GalxeAccount:
         for group_id in range(len(campaign['credentialGroups'])):
 
             need_retry = False
-            was_completed = False
 
             for i in range(max(3, MAX_TRIES)):
                 if i > 0:
@@ -319,68 +324,67 @@ class GalxeAccount:
                     await asyncio.sleep(31)
 
                 cred_group = campaign['credentialGroups'][group_id]
-                need_retry, completed = await self._complete_cred_group(campaign['id'], cred_group)
-                was_completed = was_completed or completed
+                need_retry = await self._complete_cred_group(campaign['id'], cred_group)
 
                 campaign = await self.client.get_campaign_info(campaign['id'])
                 if not need_retry:
                     break
 
             try_again = need_retry or try_again
-            if was_completed:
-                await wait_a_bit(2)
+            await wait_a_bit(2)
 
         return try_again
 
     async def _complete_cred_group(self, campaign_id: str, cred_group) -> bool:
-        try_again, completed = False, False
+        try_again = False
         for condition, credential in zip(cred_group['conditions'], cred_group['credentials']):
             try:
                 try:
-                    if not await self._complete_credential(campaign_id, condition, credential, FAKE_TWITTER):
-                        continue
+                    await self._complete_credential(campaign_id, condition, credential, FAKE_TWITTER)
                 except Exception as exc:
                     if FAKE_TWITTER and 'Error: pass_token used' in str(exc):
                         logger.info(f"{self.idx}) Probably can't complete with fake twitter. Trying without it")
                         await self._complete_credential(campaign_id, condition, credential, False)
                     else:
                         raise exc
-                completed = True
                 await wait_a_bit()
             except Exception as e:
                 if 'try again in 30 seconds' in str(e):
                     try_again = True
                 await log_long_exc(self.idx, f'Failed to complete "{credential["name"]}"', e, warning=True)
-        return try_again, completed
+        return try_again
 
     async def _complete_credential(self, campaign_id: str, condition, credential, fake_twitter):
         if condition['eligible']:
-            return False
+            return
 
         match credential['type']:
             case Credential.TWITTER:
-                need_verify = await self._complete_twitter(credential, fake_twitter)
+                need_sync = await self._complete_twitter(campaign_id, credential, fake_twitter)
             case Credential.EMAIL:
-                need_verify = await self._complete_email(credential)
+                need_sync = await self._complete_email(campaign_id, credential)
             case Credential.EVM_ADDRESS:
-                need_verify = await self._complete_eth(credential)
+                need_sync = await self._complete_eth(campaign_id, credential)
             case Credential.GALXE_ID:
-                need_verify = await self._complete_galxe_id(campaign_id, credential)
+                need_sync = await self._complete_galxe_id(campaign_id, credential)
             case Credential.DISCORD:
-                need_verify = await self._complete_discord(credential)
+                need_sync = await self._complete_discord(credential)
             case unexpected:
                 if HIDE_UNSUPPORTED:
-                    return False
+                    return
                 raise Exception(f'{unexpected} credential type is not supported yet')
 
-        if need_verify:
-            await self._verify_credential(campaign_id, credential['id'], credential['type'])
+        if need_sync:
+            await self._sync_credential(campaign_id, credential['id'], credential['type'])
             logger.success(f'{self.idx}) Verified "{credential["name"]}"')
 
-        return True
+        if credential['type'] == Credential.DISCORD:
+            logger.info(f'{self.idx}) Extra wait 15s after Discord task verification')
+            await asyncio.sleep(15)
 
-    async def _complete_twitter(self, credential, fake_twitter) -> bool:
+    async def _complete_twitter(self, campaign_id: str, credential, fake_twitter) -> bool:
         await self.link_twitter(fake_twitter)
+        await self.add_typed_credential(campaign_id, credential)
         if fake_twitter:
             return True
         try:
@@ -402,10 +406,11 @@ class GalxeAccount:
             await log_long_exc(self.idx, 'Twitter action failed. Trying to verify anyway', e, warning=True)
         return True
 
-    async def _complete_email(self, credential) -> bool:
+    async def _complete_email(self, campaign_id: str, credential) -> bool:
         await self.link_email()
         match credential['credSource']:
             case CredSource.VISIT_LINK:
+                await self.add_typed_credential(campaign_id, credential)
                 return True
             case CredSource.QUIZ:
                 await self.solve_quiz(credential)
@@ -415,9 +420,10 @@ class GalxeAccount:
                     return False
                 raise Exception(f'{unexpected} credential source for Email task is not supported yet')
 
-    async def _complete_eth(self, credential) -> bool:
+    async def _complete_eth(self, campaign_id: str, credential) -> bool:
         match credential['credSource']:
             case CredSource.VISIT_LINK:
+                await self.add_typed_credential(campaign_id, credential)
                 return True
         logger.warning(f'{self.idx}) {credential["name"]} is not done or not updated yet')
         return False
@@ -499,13 +505,14 @@ class GalxeAccount:
 
     @captcha_retry
     @async_retry
-    async def _verify_credential(self, campaign_id: str, credential_id: str, cred_type: str):
-        if cred_type != Credential.DISCORD:
-            captcha = await self.get_captcha()
-            await self.client.add_typed_credential_items(campaign_id, credential_id, captcha)
+    async def add_typed_credential(self, campaign_id: str, credential):
+        captcha = await self.get_captcha()
+        await self.client.add_typed_credential_items(campaign_id, credential['id'], captcha)
+        await wait_a_bit(3)
 
-            await wait_a_bit(2)
-
+    @captcha_retry
+    @async_retry
+    async def _sync_credential(self, campaign_id: str, credential_id: str, cred_type: str):
         sync_options = self._default_sync_options(credential_id)
         match cred_type:
             case Credential.TWITTER:
@@ -517,6 +524,16 @@ class GalxeAccount:
                     }
                 })
         await self.client.sync_credential_value(sync_options)
+
+    async def verify_all_credentials(self, campaign):
+        cred_ids = []
+        for cred_group in campaign['credentialGroups']:
+            cred_ids.extend([cred['id'] for cred in cred_group['credentials'] if cred['eligible'] == 0])
+        if len(cred_ids) == 0:
+            return False
+        await self.client.verify_credentials(cred_ids)
+        await wait_a_bit(3)
+        return True
 
     # Claim part
 
