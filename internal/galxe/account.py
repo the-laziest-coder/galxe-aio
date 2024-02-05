@@ -1,6 +1,8 @@
 import time
 import json
 import random
+import base64
+import asyncio
 import colorama
 from uuid import uuid4
 from faker import Faker
@@ -14,12 +16,14 @@ from ..email import Email
 from ..models import AccountInfo
 from ..storage import Storage
 from ..twitter import Twitter
-from ..config import FAKE_TWITTER, HIDE_UNSUPPORTED
+from ..config import FAKE_TWITTER, HIDE_UNSUPPORTED, MAX_TRIES
 from ..utils import wait_a_bit, get_query_param, get_proxy_url, async_retry, log_long_exc
 
 from .client import Client
 from .fingerprint import fingerprints, captcha_retry
 from .utils import random_string_for_entropy
+from .models import Recurring, Credential, CredSource, ConditionRelation, QuizType, Gamification
+from .constants import DISCORD_AUTH_URL, GALXE_DISCORD_CLIENT_ID
 
 colorama.init()
 Faker.seed(int(time.time() * 1000))
@@ -145,27 +149,31 @@ class GalxeAccount:
             if existed_twitter_username.lower() == self.twitter.my_username:
                 return
             else:
-                logger.info(f'{self.idx}) Another twitter account already linked with this EVM address: '
+                logger.info(f'{self.idx}) Another Twitter account already linked with this EVM address: '
                             f'{existed_twitter_username}. Current: {self.twitter.my_username}')
 
         logger.info(f'{self.idx}) Starting link new Twitter account')
 
         galxe_id = self.profile.get('id')
         tweet_text = f'Verifying my Twitter account for my #GalxeID gid:{galxe_id} @Galxe \n\n galxe.com/galxeid '
+
         try:
-            tweet_url = await self.twitter.post_tweet(tweet_text)
+            try:
+                tweet_url = await self.twitter.post_tweet(tweet_text)
+            except Exception as e:
+                if 'Authorization: Status is a duplicate. (187)' in str(e):
+                    logger.info(f'{self.idx}) Duplicate tweet. Trying to find original one')
+                    tweet_url = await self.twitter.find_posted_tweet(lambda t: tweet_text.split('\n')[0] in t)
+                    if tweet_url is None:
+                        raise Exception("Tried to post duplicate tweet. Can't find original one")
+                    logger.info(f'{self.idx}) Duplicate tweet found: {tweet_url}')
+                else:
+                    raise e
+            await wait_a_bit()
+            await self.client.check_twitter_account(tweet_url)
+            await self.client.verify_twitter_account(tweet_url)
         except Exception as e:
-            if 'Authorization: Status is a duplicate. (187)' in str(e):
-                logger.info(f'{self.idx}) Duplicate tweet. Trying to find original one')
-                tweet_url = await self.twitter.find_posted_tweet(lambda t: tweet_text.split('\n')[0] in t)
-                if tweet_url is None:
-                    raise Exception("Tried to post duplicate tweet. Can't find original one")
-                logger.info(f'{self.idx}) Duplicate tweet found: {tweet_url}')
-            else:
-                raise e
-        await wait_a_bit()
-        await self.client.check_twitter_account(tweet_url)
-        await self.client.verify_twitter_account(tweet_url)
+            raise Exception(f'Failed ot link Twitter: {str(e)}')
 
         logger.info(f'{self.idx}) Twitter account linked')
         await wait_a_bit(4)
@@ -174,28 +182,79 @@ class GalxeAccount:
     async def link_email(self, strict=False):
         existed_email = self.profile.get('email', '')
         if existed_email != '':
-            if existed_email.lower() == Email.from_account(self.account).username().lower():
+            current_email = Email.from_account(self.account).username()
+            if existed_email.lower() == current_email.lower():
                 return
             else:
                 if not strict:
                     return
-                logger.info(f'{self.idx}) Another email already linked with this EVM address: {existed_email}')
+                logger.info(f'{self.idx}) Another email already linked with this EVM address: '
+                            f'{existed_email}. Current: {current_email}')
 
         logger.info(f'{self.idx}) Starting link new email')
 
-        async with Email.from_account(self.account) as email_client:
-            await email_client.login()
-            email_username = email_client.username()
-            captcha = await self.get_captcha()
-            await self.client.send_verify_code(email_username, captcha)
-            logger.info(f'{self.idx}) Verify code was sent to {email_username}')
-            email_text = await email_client.wait_for_email(lambda s: s == 'Please confirm your email on Galxe')
-            code = self._extract_code_from_email(email_text)
-            await self.client.update_email(email_username, code)
+        try:
+            async with Email.from_account(self.account) as email_client:
+                await email_client.login()
+                email_username = email_client.username()
+                captcha = await self.get_captcha()
+                await self.client.send_verify_code(email_username, captcha)
+                logger.info(f'{self.idx}) Verify code was sent to {email_username}')
+                email_text = await email_client.wait_for_email(lambda s: s == 'Please confirm your email on Galxe')
+                code = self._extract_code_from_email(email_text)
+                await self.client.update_email(email_username, code)
+        except Exception as e:
+            raise Exception(f'Failed to link email: {str(e)}')
 
         logger.info(f'{self.idx}) Email linked')
         await wait_a_bit(4)
         await self.refresh_profile()
+
+    async def link_discord(self):
+        existed_discord = self.profile.get('discordUserID', '')
+        existed_discord_username = self.profile.get('discordUserName', '')
+        discord_user_id = self._get_discord_user_id()
+
+        if existed_discord != '':
+            if existed_discord == discord_user_id:
+                return
+            else:
+                logger.info(f'{self.idx}) Another Discord account already linked with this EVM address: '
+                            f'{existed_discord_username}')
+
+        params = {
+            'client_id': GALXE_DISCORD_CLIENT_ID,
+            'response_type': 'code',
+            'redirect_uri': 'https://galxe.com',
+            'scope': 'identify guilds guilds.members.read',
+            'state': f'Discord_Auth,{self.account.evm_address},false',
+        }
+        body = {
+            'permissions': '0',
+            'authorize': True,
+            'integration_type': 0,
+        }
+        token = None
+        try:
+            location = await self.client.post(DISCORD_AUTH_URL, [200], lambda r: r['location'],
+                                              params=params, json=body,
+                                              headers={'Authorization': self.account.discord_token})
+            token = get_query_param(location, 'code')
+            await self.client.check_discord_account(token)
+            await self.client.verify_discord_account(token)
+        except Exception as e:
+            if token is None:
+                self.account.discord_error = True
+            raise Exception(f'Failed to link Discord: {str(e)}')
+
+        logger.info(f'{self.idx}) Discord account linked')
+        await wait_a_bit(4)
+        await self.refresh_profile()
+
+    def _get_discord_user_id(self):
+        if self.account.discord_token == '':
+            raise Exception('Empty Discord token')
+        return str(base64.b64decode(self.account.discord_token.split('.')[0].encode("utf-8")), 'utf-8')
 
     @classmethod
     def _extract_code_from_email(cls, text):
@@ -207,7 +266,11 @@ class GalxeAccount:
 
     @classmethod
     def _is_daily_campaign(cls, campaign):
-        return campaign.get('recurringType') == 'DAILY'
+        return campaign.get('recurringType') == Recurring.DAILY
+
+    @classmethod
+    def _is_sequential_campaign(cls, campaign):
+        return campaign['parentCampaign'].get('isSequencial')
 
     def _update_campaign_points(self, campaign, process_result=None):
         if self._is_parent_campaign(campaign):
@@ -229,6 +292,8 @@ class GalxeAccount:
             if aggr_func is None:
                 return
             return aggr_func(results)
+        if campaign_id not in self.account.actual_campaigns:
+            self.account.actual_campaigns.append(campaign_id)
         result = await process_async_func(info)
         await wait_a_bit(2)
         info = await self.client.get_campaign_info(campaign_id)
@@ -242,10 +307,27 @@ class GalxeAccount:
 
     async def _complete_campaign_process(self, campaign):
         logger.info(f'{self.idx}) Starting complete {campaign["name"]}')
+        is_sequential = self._is_sequential_campaign(campaign)
         try_again = False
-        for cred_group in campaign['credentialGroups']:
-            try_again = await self._complete_cred_group(campaign['id'], cred_group) or try_again
-            await wait_a_bit()
+        for group_id in range(len(campaign['credentialGroups'])):
+
+            retries_in_place = max(3, MAX_TRIES) if is_sequential else 1
+            need_retry = False
+
+            for i in range(retries_in_place):
+                if i > 0:
+                    logger.info(f'{self.idx}) Waiting for 30s to retry')
+                    await asyncio.sleep(31)
+
+                cred_group = campaign['credentialGroups'][group_id]
+                need_retry = await self._complete_cred_group(campaign['id'], cred_group)
+
+                campaign = await self.client.get_campaign_info(campaign['id'])
+                if not need_retry:
+                    break
+
+            try_again = need_retry or try_again
+            await wait_a_bit(2)
         return try_again
 
     async def _complete_cred_group(self, campaign_id: str, cred_group) -> bool:
@@ -272,14 +354,16 @@ class GalxeAccount:
             return
 
         match credential['type']:
-            case 'TWITTER':
+            case Credential.TWITTER:
                 need_verify = await self._complete_twitter(credential, fake_twitter)
-            case 'EMAIL':
+            case Credential.EMAIL:
                 need_verify = await self._complete_email(credential)
-            case 'EVM_ADDRESS':
+            case Credential.EVM_ADDRESS:
                 need_verify = await self._complete_eth(credential)
-            case 'GALXE_ID':
+            case Credential.GALXE_ID:
                 need_verify = await self._complete_galxe_id(campaign_id, credential)
+            case Credential.DISCORD:
+                need_verify = await self._complete_discord(credential)
             case unexpected:
                 if HIDE_UNSUPPORTED:
                     return False
@@ -287,7 +371,7 @@ class GalxeAccount:
 
         if need_verify:
             await self._verify_credential(campaign_id, credential['id'], credential['type'])
-            logger.info(f'{self.idx}) Verified "{credential["name"]}"')
+            logger.success(f'{self.idx}) Verified "{credential["name"]}"')
 
     async def _complete_twitter(self, credential, fake_twitter) -> bool:
         await self.link_twitter(fake_twitter)
@@ -295,13 +379,13 @@ class GalxeAccount:
             return True
         try:
             match credential['credSource']:
-                case 'TWITTER_FOLLOW':
+                case CredSource.TWITTER_FOLLOW:
                     user_to_follow = get_query_param(credential['referenceLink'], 'screen_name')
                     await self.twitter.follow(user_to_follow)
-                case 'TWITTER_RT':
+                case CredSource.TWITTER_RT:
                     tweet_id = get_query_param(credential['referenceLink'], 'tweet_id')
                     await self.twitter.retweet(tweet_id)
-                case 'TWITTER_LIKE':
+                case CredSource.TWITTER_LIKE:
                     tweet_id = get_query_param(credential['referenceLink'], 'tweet_id')
                     await self.twitter.like(tweet_id)
                 case unexpected:
@@ -315,29 +399,35 @@ class GalxeAccount:
     async def _complete_email(self, credential) -> bool:
         await self.link_email()
         match credential['credSource']:
-            case 'VISIT_LINK':
-                pass
-            case 'QUIZ':
+            case CredSource.VISIT_LINK:
+                return True
+            case CredSource.QUIZ:
                 await self.solve_quiz(credential)
                 return False
             case unexpected:
                 if HIDE_UNSUPPORTED:
                     return False
                 raise Exception(f'{unexpected} credential source for Email task is not supported yet')
-        return True
 
     async def _complete_eth(self, credential) -> bool:
+        match credential['credSource']:
+            case CredSource.VISIT_LINK:
+                return True
         logger.warning(f'{self.idx}) {credential["name"]} is not done or not updated yet')
         return False
 
     async def _complete_galxe_id(self, campaign_id: str, credential) -> bool:
         match credential['credSource']:
-            case 'SPACE_USERS':
+            case CredSource.SPACE_USERS:
                 await self._follow_space(campaign_id, credential['id'])
             case unexpected:
                 if not HIDE_UNSUPPORTED:
                     raise Exception(f'{unexpected} credential source for Galxe ID task is not supported yet')
         return False
+
+    async def _complete_discord(self, credential) -> bool:
+        await self.link_discord()
+        return True
 
     async def _follow_space(self, campaign_id: str, credential_id):
         info = await self.client.get_campaign_info(campaign_id)
@@ -374,7 +464,7 @@ class GalxeAccount:
         if answers is None:
             quizzes = await self.client.read_quiz(quiz_id)
 
-            if any(q['type'] != 'MULTI_CHOICE' for q in quizzes):
+            if any(q['type'] != QuizType.MULTI_CHOICE for q in quizzes):
                 raise Exception(f"Can't solve quiz with not multi-choice items")
 
             answers = [-1 for _ in quizzes]
@@ -411,7 +501,7 @@ class GalxeAccount:
 
         sync_options = self._default_sync_options(credential_id)
         match cred_type:
-            case 'TWITTER':
+            case Credential.TWITTER:
                 captcha = await self.get_captcha()
                 sync_options.update({
                     'twitter': {
@@ -440,16 +530,18 @@ class GalxeAccount:
 
     @classmethod
     def _campaign_nft_claimed(cls, campaign) -> bool:
-        return campaign['whitelistInfo']['usedCount'] >= campaign['whitelistInfo']['maxCount']
+        return 0 < campaign['whitelistInfo']['maxCount'] <= campaign['whitelistInfo']['usedCount']
 
     def already_claimed(self, campaign) -> bool:
         if 'gamification' not in campaign:
             return True
         match campaign['gamification']['type']:
-            case 'Points':
+            case Gamification.POINTS:
                 return self._campaign_points_claimed(campaign)
-            case 'Oat':
+            case Gamification.OAT:
                 return self._campaign_points_claimed(campaign) and self._campaign_nft_claimed(campaign)
+            case Gamification.POINTS_MYSTERY_BOX:
+                return self._campaign_nft_claimed(campaign)
             case unexpected:
                 if HIDE_UNSUPPORTED:
                     return False
@@ -490,7 +582,7 @@ class GalxeAccount:
         eligible = [c['eligible'] for c in cred_group['conditions']]
         left_points = available_points - claimed_points
         match cred_group['conditionRelation']:
-            case 'ALL':
+            case ConditionRelation.ALL:
                 if not all(eligible):
                     group_name = [c["name"] for c in cred_group["credentials"]] + [f"{left_points} points left"]
                     group_name = f'group#{cred_idx} [{" | ".join(group_name)}]'
@@ -520,21 +612,20 @@ class GalxeAccount:
         claimed_points = 0
         claimed_oats = 0
         match reward_type:
-            case 'Points':
+            case Gamification.POINTS | Gamification.POINTS_MYSTERY_BOX:
                 if claim_data.get('loyaltyPointsTxResp'):
                     claimed_points = claim_data['loyaltyPointsTxResp'].get('TotalClaimedPoints')
-            case 'Oat':
+                claimed_log = f'{claimed_points} points'
+                if reward_type == Gamification.POINTS_MYSTERY_BOX:
+                    claimed_log += ' from Mystery Box'
+            case Gamification.OAT:
                 if campaign['gasType'] == 'Gasless':
                     claimed_oats = len(claim_data['mintFuncInfo']['verifyIDs'])
+                    claimed_log = f'{claimed_oats} OAT{"s" if claimed_oats > 1 else ""}'
                 else:
                     raise Exception(f'Only gasless OAT reward type is supported for claim')
             case unexpected:
                 raise Exception(f'{unexpected} reward type is not supported for claim yet')
-
-        claimed_log = f'{claimed_points} points' if claimed_points > 0 else ''
-        claimed_log += f'{claimed_oats} OAT' if claimed_oats > 0 else ''
-        if claimed_oats > 1:
-            claimed_log += 's'
 
         logger.success(f'{self.idx}) Campaign {campaign["name"]} claimed {claimed_log}')
 

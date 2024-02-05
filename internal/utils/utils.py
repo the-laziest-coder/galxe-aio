@@ -91,7 +91,10 @@ def get_conn(proxy):
 
 
 def get_query_param(url: str, name: str):
-    return parse_qs(urlparse(url).query).get(name)[0]
+    values = parse_qs(urlparse(url).query).get(name)
+    if values:
+        return values[0]
+    return None
 
 
 def to_bytes(hex_str):

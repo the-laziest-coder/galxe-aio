@@ -161,6 +161,32 @@ class Client(TLSClient):
         }
         await self.api_request(body, exc_condition=lambda resp: resp['data']['verifyTwitterAccount'] is None)
 
+    async def check_discord_account(self, token):
+        body = {
+            'operationName': 'checkDiscordAccount',
+            'query': 'mutation checkDiscordAccount($input: VerifyDiscordAccountInput!) {\n  checkDiscordAccount(input: $input) {\n    address\n    discordUserID\n    __typename\n  }\n}\n',
+            'variables': {
+                'input': {
+                    'address': self.address,
+                    'token': token,
+                },
+            },
+        }
+        await self.api_request(body, exc_condition=lambda resp: resp['data']['checkDiscordAccount'] is None)
+
+    async def verify_discord_account(self, token):
+        body = {
+            'operationName': 'VerifyDiscord',
+            'query': 'mutation VerifyDiscord($input: VerifyDiscordAccountInput!) {\n  verifyDiscordAccount(input: $input) {\n    address\n    discordUserID\n    discordUserName\n    __typename\n  }\n}\n',
+            'variables': {
+                'input': {
+                    'address': self.address,
+                    'token': token,
+                },
+            },
+        }
+        await self.api_request(body, exc_condition=lambda resp: resp['data']['verifyDiscordAccount'] is None)
+
     async def get_campaign_info(self, campaign_id):
         body = {
             'operationName': 'CampaignDetailAll',

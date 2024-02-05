@@ -37,7 +37,7 @@ async def change_ip(idx, link: str):
 async def process_account(account_data: Tuple[int, Tuple[str, str, str, str, str]],
                           storage: AccountStorage):
 
-    idx, (evm_wallet, proxy, twitter_token, email) = account_data
+    idx, (evm_wallet, proxy, twitter_token, email, discord) = account_data
 
     evm_address = EthAccount().from_key(evm_wallet).address
 
@@ -52,17 +52,21 @@ async def process_account(account_data: Tuple[int, Tuple[str, str, str, str, str
     if account_info is None:
         logger.info(f'{idx}) Account info was not saved before')
         account_info = AccountInfo(idx=idx, evm_address=evm_address, evm_private_key=evm_wallet,
-                                   proxy=proxy, twitter_auth_token=twitter_token,
+                                   proxy=proxy, twitter_auth_token=twitter_token, discord_token=discord,
                                    email_username=email_username, email_password=email_password)
     else:
+        if account_info.discord_token == '':
+            account_info.discord_token = discord
         if UPDATE_STORAGE_ACCOUNT_INFO:
             account_info.proxy = proxy
             account_info.twitter_auth_token = twitter_token
             account_info.email_username = email_username
             account_info.email_password = email_password
+            account_info.discord_token = discord
         logger.info(f'{idx}) Saved account info restored')
 
     account_info.twitter_error = False
+    account_info.discord_error = False
 
     if '|' in account_info.proxy:
         change_link = account_info.proxy.split('|')[1]
@@ -141,7 +145,12 @@ def main():
     with open('files/emails.txt', 'r', encoding='utf-8') as file:
         emails = file.read().splitlines()
         emails = [e.strip() for e in emails]
+    with open('files/discords.txt', 'r', encoding='utf-8') as file:
+        discords = file.read().splitlines()
+        discords = [d.strip() for d in discords]
 
+    if len(discords) == 0:
+        discords = ['' for _ in evm_wallets]
     if len(evm_wallets) != len(proxies):
         logger.error('Proxies count does not match wallets count')
         return
@@ -150,6 +159,9 @@ def main():
         return
     if len(evm_wallets) != len(emails):
         logger.error('Emails count does not match wallets count')
+        return
+    if len(evm_wallets) != len(discords):
+        logger.error('Discord count does not match wallets count')
         return
 
     for idx, w in enumerate(evm_wallets, start=1):
@@ -162,11 +174,11 @@ def main():
     want_only = []
 
     def get_batches(skip: int = None, threads: int = THREADS_NUM):
-        _data = list(enumerate(list(zip(evm_wallets, proxies, twitters, emails)), start=1))
+        _data = list(enumerate(list(zip(evm_wallets, proxies, twitters, emails, discords)), start=1))
         if skip is not None:
             _data = _data[skip:]
         if skip is not None and len(want_only) > 0:
-            _data = [d for d in enumerate(list(zip(evm_wallets, proxies, twitters, emails)), start=1)
+            _data = [d for d in enumerate(list(zip(evm_wallets, proxies, twitters, emails, discords)), start=1)
                      if d[0] in want_only]
         if RANDOM_ORDER:
             random.shuffle(_data)
@@ -189,12 +201,21 @@ def main():
     print()
     logger.info('Finished')
     logger.info(f'Failed cnt: {len(failed)}')
-    logger.info(f'Failed ids: {failed}')
+    logger.info(f'Failed ids: {sorted(failed)}')
     print()
 
-    csv_data = [['#', 'EVM Address', 'Total Points', 'Twitter Error']]
-    campaigns = None
-    total = {'total_points': 0, 'twitter_error': 0}
+    campaigns = {}
+    for w in evm_wallets:
+        account = storage.get_final_account_info(EthAccount().from_key(w).address)
+        if account is None:
+            continue
+        for c_id, value in account.actual_points.items():
+            if c_id not in campaigns:
+                campaigns[c_id] = value[0]
+    campaigns = list(campaigns.items())
+
+    csv_data = [['#', 'EVM Address', 'Total Points'] + [n for _, n in campaigns] + ['Twitter Error', 'Discord Error']]
+    total = {'total_points': 0, 'twitter_error': 0, 'discord_error': 0}
     for idx, w in enumerate(evm_wallets, start=1):
         evm_address = EthAccount().from_key(w).address
         account = storage.get_final_account_info(evm_address)
@@ -202,14 +223,10 @@ def main():
             csv_data.append([idx, evm_address])
             continue
 
-        if campaigns is None:
-            campaigns = [(c_id, value[0]) for c_id, value in account.points.items()]
-            csv_data[0] = csv_data[0][:3] + [n for _, n in campaigns] + csv_data[0][3:]
-
-        total_points = sum([v for _, (_, v, _) in account.points.items()])
-        total['total_points'] += total_points
-
         points = [account.campaign_points_str(c_id) for c_id, _ in campaigns]
+        total_points = sum(account.campaign_points(c_id) for c_id, _ in campaigns)
+
+        total['total_points'] += total_points
 
         for c_id, cn in campaigns:
             if cn not in total:
@@ -223,15 +240,16 @@ def main():
                 total[cn][1] += 1 if account.points[c_id][2] else 0
 
         total['twitter_error'] += 1 if account.twitter_error else 0
+        total['discord_error'] += 1 if account.discord_error else 0
 
         csv_data.append([idx, evm_address, total_points] + points +
-                        [account.twitter_error_s])
+                        [account.twitter_error_s, account.discord_error_s])
 
     csv_data.append([])
     csv_data.append(['', '', total['total_points']] +
                     [f'{total.get(cn)[0]} / {total.get(cn)[1]}' if total.get(cn)[1] else total.get(cn)[0]
-                     for _, cn in campaigns] + [total['twitter_error']])
-    csv_data.append(['', '', 'Total Points'] + [n for _, n in campaigns] + ['Twitter Error'])
+                     for _, cn in campaigns] + [total['twitter_error'], total['discord_error']])
+    csv_data.append(['', '', 'Total Points'] + [n for _, n in campaigns] + ['Twitter Error', 'Discord Error'])
 
     run_timestamp = str(datetime.now())
     csv_data.extend([[], ['', 'Timestamp', run_timestamp]])
