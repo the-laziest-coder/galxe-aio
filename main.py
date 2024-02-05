@@ -82,19 +82,9 @@ async def process_account(account_data: Tuple[int, Tuple[str, str, str, str, str
 
             await wait_a_bit()
 
-            campaigns = [(c_id, 0) for c_id in GALXE_CAMPAIGN_IDS]
-            for i in range(max(MAX_TRIES, 3)):
-                if len(campaigns) == 0:
-                    break
-                if i > 0:
-                    logger.info(f'{idx}) Trying claim again after 30 seconds')
-                left_campaigns = []
-                for campaign_id, ts in campaigns:
-                    await asyncio.sleep(30 - int(time.time()) + ts)
-                    if await galxe_account.complete_campaign(campaign_id):
-                        left_campaigns.append((campaign_id, int(time.time())))
-                    await galxe_account.claim_campaign(campaign_id)
-                campaigns = left_campaigns
+            for campaign_id in GALXE_CAMPAIGN_IDS:
+                await galxe_account.complete_campaign(campaign_id)
+                await galxe_account.claim_campaign(campaign_id)
 
     except Exception as galxe_exc:
         exc = Exception(f'Galxe error: {galxe_exc}')

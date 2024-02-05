@@ -307,51 +307,55 @@ class GalxeAccount:
 
     async def _complete_campaign_process(self, campaign):
         logger.info(f'{self.idx}) Starting complete {campaign["name"]}')
-        is_sequential = self._is_sequential_campaign(campaign)
         try_again = False
         for group_id in range(len(campaign['credentialGroups'])):
 
-            retries_in_place = max(3, MAX_TRIES) if is_sequential else 1
             need_retry = False
+            was_completed = False
 
-            for i in range(retries_in_place):
+            for i in range(max(3, MAX_TRIES)):
                 if i > 0:
                     logger.info(f'{self.idx}) Waiting for 30s to retry')
                     await asyncio.sleep(31)
 
                 cred_group = campaign['credentialGroups'][group_id]
-                need_retry = await self._complete_cred_group(campaign['id'], cred_group)
+                need_retry, completed = await self._complete_cred_group(campaign['id'], cred_group)
+                was_completed = was_completed or completed
 
                 campaign = await self.client.get_campaign_info(campaign['id'])
                 if not need_retry:
                     break
 
             try_again = need_retry or try_again
-            await wait_a_bit(2)
+            if was_completed:
+                await wait_a_bit(2)
+
         return try_again
 
     async def _complete_cred_group(self, campaign_id: str, cred_group) -> bool:
-        try_again = False
+        try_again, completed = False, False
         for condition, credential in zip(cred_group['conditions'], cred_group['credentials']):
             try:
                 try:
-                    await self._complete_credential(campaign_id, condition, credential, FAKE_TWITTER)
+                    if not await self._complete_credential(campaign_id, condition, credential, FAKE_TWITTER):
+                        continue
                 except Exception as exc:
                     if FAKE_TWITTER and 'Error: pass_token used' in str(exc):
                         logger.info(f"{self.idx}) Probably can't complete with fake twitter. Trying without it")
                         await self._complete_credential(campaign_id, condition, credential, False)
                     else:
                         raise exc
+                completed = True
+                await wait_a_bit()
             except Exception as e:
                 if 'try again in 30 seconds' in str(e):
                     try_again = True
                 await log_long_exc(self.idx, f'Failed to complete "{credential["name"]}"', e, warning=True)
-            await wait_a_bit()
-        return try_again
+        return try_again, completed
 
     async def _complete_credential(self, campaign_id: str, condition, credential, fake_twitter):
         if condition['eligible']:
-            return
+            return False
 
         match credential['type']:
             case Credential.TWITTER:
@@ -372,6 +376,8 @@ class GalxeAccount:
         if need_verify:
             await self._verify_credential(campaign_id, credential['id'], credential['type'])
             logger.success(f'{self.idx}) Verified "{credential["name"]}"')
+
+        return True
 
     async def _complete_twitter(self, credential, fake_twitter) -> bool:
         await self.link_twitter(fake_twitter)
@@ -494,10 +500,11 @@ class GalxeAccount:
     @captcha_retry
     @async_retry
     async def _verify_credential(self, campaign_id: str, credential_id: str, cred_type: str):
-        captcha = await self.get_captcha()
-        await self.client.add_typed_credential_items(campaign_id, credential_id, captcha)
+        if cred_type != Credential.DISCORD:
+            captcha = await self.get_captcha()
+            await self.client.add_typed_credential_items(campaign_id, credential_id, captcha)
 
-        await wait_a_bit(2)
+            await wait_a_bit(2)
 
         sync_options = self._default_sync_options(credential_id)
         match cred_type:
