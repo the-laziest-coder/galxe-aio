@@ -2,8 +2,9 @@
 
  - Link Twitter account
  - Link email: IMAP or mail3.me
+ - Link Discord
  - Complete Galxe tasks
- - Claim Galxe points and gas-less OATs
+ - Claim Galxe points, gas-less OATs and Mystery Boxes
  - Quiz solver
  - Accounts statistics
 
@@ -20,6 +21,7 @@
  - `files/proxies.txt` - Corresponding proxies for wallets
  - `files/twitters.txt` - Corresponding twitters for wallets
  - `files/emails.txt` - Corresponding emails for wallets
+ - `files/discords.txt` - Corresponding discords for wallets. Can be empty if not needed
  - `config.toml` - Custom settings
 
 ### Config
@@ -29,7 +31,7 @@
 
 ### Run
 
-Python version: 3.10, 3.11
+Python version: 3.11
 
 Installing virtual env: \
 `python3 -m venv venv`
