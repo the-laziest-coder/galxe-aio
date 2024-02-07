@@ -254,7 +254,9 @@ class GalxeAccount:
     def _get_discord_user_id(self):
         if self.account.discord_token == '':
             raise Exception('Empty Discord token')
-        return str(base64.b64decode(self.account.discord_token.split('.')[0].encode("utf-8")), 'utf-8')
+        token = self.account.discord_token.split('.')[0]
+        token += '=' * (4 - len(token) % 4)
+        return str(base64.b64decode(token.encode("utf-8")), 'utf-8')
 
     @classmethod
     def _extract_code_from_email(cls, text):
