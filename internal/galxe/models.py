@@ -24,6 +24,7 @@ class CredSource(StrEnum):
 
 class ConditionRelation(StrEnum):
     ALL = 'ALL'
+    ANY = 'ANY'
 
 
 class QuizType(StrEnum):

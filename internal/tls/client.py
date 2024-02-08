@@ -63,22 +63,25 @@ class TLSClient:
         self._headers.update(new_headers)
 
     @async_retry
+    async def _raw_request(self, method, url, headers, **kwargs):
+        match method:
+            case 'GET':
+                resp = await self.sess.get(url, headers=headers, **kwargs)
+            case 'POST':
+                resp = await self.sess.post(url, headers=headers, **kwargs)
+            case unexpected:
+                raise Exception(f'Wrong request method: {unexpected}')
+        return resp
+
     async def request(self, method, url, acceptable_statuses=None, resp_handler=None, with_text=False, **kwargs):
         headers = self._headers.copy()
         if 'headers' in kwargs:
             headers.update(kwargs.pop('headers'))
-        timeout = 60
-        if 'timeout' in kwargs:
-            timeout = kwargs.pop('timeout')
+        if 'timeout' not in kwargs:
+            kwargs.update({'timeout': 60})
         if DISABLE_SSL:
             kwargs.update({'ssl': False})
-        match method:
-            case 'GET':
-                resp = await self.sess.get(url, headers=headers, timeout=timeout, **kwargs)
-            case 'POST':
-                resp = await self.sess.post(url, headers=headers, timeout=timeout, **kwargs)
-            case unexpected:
-                raise Exception(f'Wrong request method: {unexpected}')
+        resp = await self._raw_request(method, url, headers, **kwargs)
         return self._handle_response(resp, acceptable_statuses, resp_handler, with_text)
 
     async def get(self, url, acceptable_statuses=None, resp_handler=None, with_text=False, **kwargs):

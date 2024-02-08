@@ -1,6 +1,8 @@
 import email
 from email.header import decode_header
+from email.message import Message
 from typing import Optional
+from loguru import logger
 from aioimaplib import aioimaplib
 
 from ..models import AccountInfo
@@ -17,7 +19,10 @@ class IMAPClient(BaseClient):
 
     async def close(self):
         if self.imap is not None:
-            await self.imap.close()
+            try:
+                await self.imap.close()
+            except Exception as e:
+                logger.warning(f'{self.account.idx}) Failed to close IMAP client: {str(e)}')
 
     def username(self) -> str:
         return self.account.email_username
@@ -30,7 +35,11 @@ class IMAPClient(BaseClient):
 
     async def _find_email(self, folder: str, subject_condition_func) -> Optional[str]:
         _, messages = await self.imap.select(folder)
-        msg_cnt = int(messages[0].split()[0])
+        msg_cnt = 0
+        for message in messages:
+            if message.endswith(b'EXISTS'):
+                msg_cnt = int(message.split()[0])
+                break
         for i in range(msg_cnt, 0, -1):
             res, msg = await self.imap.fetch(str(i), '(RFC822)')
             if res != 'OK':
@@ -39,8 +48,12 @@ class IMAPClient(BaseClient):
             msg = email.message_from_bytes(raw_email)
             subject, encoding = decode_header(msg['Subject'])[0]
             if isinstance(subject, bytes):
-                subject = subject.decode(encoding)
+                subject = subject.decode(encoding if encoding else 'utf-8')
             if subject_condition_func(subject):
-                body = msg.get_payload(decode=True).decode()
-                return body
+                return self.get_email_body(msg)
         return None
+
+    def get_email_body(self, msg: Message):
+        if msg.is_multipart():
+            return self.get_email_body(msg.get_payload(0))
+        return msg.get_payload(decode=True).decode()

@@ -315,6 +315,13 @@ class GalxeAccount:
 
     async def _complete_campaign_process(self, campaign):
         logger.info(f'{self.idx}) Starting complete {campaign["name"]}')
+
+        if campaign['requireEmail']:
+            try:
+                await self.link_email()
+            except Exception as e:
+                logger.warning(f'{self.idx}) Campaign require email: {str(e)}')
+
         try_again = False
         for group_id in range(len(campaign['credentialGroups'])):
 
@@ -409,7 +416,6 @@ class GalxeAccount:
         return True
 
     async def _complete_email(self, campaign_id: str, credential) -> bool:
-        await self.link_email()
         match credential['credSource']:
             case CredSource.VISIT_LINK:
                 await self.add_typed_credential(campaign_id, credential)
@@ -427,8 +433,8 @@ class GalxeAccount:
             case CredSource.VISIT_LINK:
                 await self.add_typed_credential(campaign_id, credential)
                 return True
-        logger.warning(f'{self.idx}) {credential["name"]} is not done or not updated yet')
-        return False
+        logger.warning(f'{self.idx}) {credential["name"]} is not done or not updated yet. Trying to verify it anyway')
+        return True
 
     async def _complete_galxe_id(self, campaign_id: str, credential) -> bool:
         match credential['credSource']:
@@ -607,19 +613,22 @@ class GalxeAccount:
             return False
         eligible = [c['eligible'] for c in cred_group['conditions']]
         left_points = available_points - claimed_points
+
+        claimable = False
         match cred_group['conditionRelation']:
             case ConditionRelation.ALL:
-                if not all(eligible):
-                    group_name = [c["name"] for c in cred_group["credentials"]] + [f"{left_points} points left"]
-                    group_name = f'group#{cred_idx} [{" | ".join(group_name)}]'
-                    logger.info(f'{self.idx}) ' +
-                                colored(f'Not enough conditions eligible to claim {group_name}', 'cyan'))
-                    return False
+                claimable = all(eligible)
+            case ConditionRelation.ANY:
+                claimable = any(eligible)
             case unexpected:
                 if not HIDE_UNSUPPORTED:
                     logger.warning(f'{self.idx}) {unexpected} condition relation is not supported yet')
-                return False
-        return True
+        if not claimable:
+            not_claimable_msg = [c["name"] for c in cred_group["credentials"]] + [f"{left_points} points left"]
+            not_claimable_msg = f'group#{cred_idx} [{" | ".join(not_claimable_msg)}]'
+            not_claimable_msg = colored(f'Not enough conditions eligible to claim {not_claimable_msg}', 'cyan')
+            logger.info(f'{self.idx}) ' + not_claimable_msg)
+        return claimable
 
     @captcha_retry
     @async_retry

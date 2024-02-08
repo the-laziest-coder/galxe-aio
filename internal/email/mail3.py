@@ -44,6 +44,8 @@ class Mail3Client(BaseClient):
             logger.info(f'{self.account.idx}) Registering Mail3.me account')
             await self.tls.post(f'{self.API_URL}/registrations', [200, 204, 400], json=payload)
             logger.info(f'{self.account.idx}) Registered')
+
+        payload.update({'pub_key': ''})
         jwt = await self.tls.post(f'{self.API_URL}/sessions', [200], lambda r: r['jwt'], json=payload)
         self.tls.update_headers({'Authorization': 'Bearer ' + jwt})
 
@@ -52,6 +54,7 @@ class Mail3Client(BaseClient):
         return message['text']['html']
 
     async def _find_email(self, folder: str, subject_condition_func) -> Optional[str]:
+        folder = folder if folder == 'INBOX' else folder.capitalize()
         messages = await self.tls.post(f'{self.API_URL}/mailbox/account/search', [200], lambda r: r['messages'], json={
             'path': folder,
             'pageSize': 20,
