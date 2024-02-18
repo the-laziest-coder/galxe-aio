@@ -80,7 +80,7 @@ class TLSClient:
         if 'timeout' not in kwargs:
             kwargs.update({'timeout': 60})
         if DISABLE_SSL:
-            kwargs.update({'ssl': False})
+            kwargs.update({'verify': False})
         resp = await self._raw_request(method, url, headers, **kwargs)
         return self._handle_response(resp, acceptable_statuses, resp_handler, with_text)
 
