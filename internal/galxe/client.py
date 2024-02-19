@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from ..models import AccountInfo
 from ..tls import TLSClient
 
@@ -30,7 +32,8 @@ class Client(TLSClient):
 
         try:
             return await self.post(self.GRAPH_URL, json=body, timeout=60,
-                                   acceptable_statuses=[200], resp_handler=resp_handler)
+                                   acceptable_statuses=[200], resp_handler=resp_handler,
+                                   headers={'Request-Id': str(uuid4())})
         except Exception as e:
             raise Exception(f"{body['operationName']} request failed: {str(e)}")
 

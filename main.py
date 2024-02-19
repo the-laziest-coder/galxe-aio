@@ -218,16 +218,16 @@ def main():
 
         total['total_points'] += total_points
 
-        for c_id, cn in campaigns:
-            if cn not in total:
-                total[cn] = [0, None]
+        for c_id, _ in campaigns:
+            if c_id not in total:
+                total[c_id] = [0, None]
             if c_id not in account.points:
                 continue
-            total[cn][0] += account.points[c_id][1]
+            total[c_id][0] += account.points[c_id][1]
             if account.points[c_id][2] is not None:
-                if total[cn][1] is None:
-                    total[cn][1] = 0
-                total[cn][1] += 1 if account.points[c_id][2] else 0
+                if total[c_id][1] is None:
+                    total[c_id][1] = 0
+                total[c_id][1] += 1 if account.points[c_id][2] else 0
 
         total['twitter_error'] += 1 if account.twitter_error else 0
         total['discord_error'] += 1 if account.discord_error else 0
@@ -237,8 +237,8 @@ def main():
 
     csv_data.append([])
     csv_data.append(['', '', total['total_points']] +
-                    [f'{total.get(cn)[0]} / {total.get(cn)[1]}' if total.get(cn)[1] else total.get(cn)[0]
-                     for _, cn in campaigns] + [total['twitter_error'], total['discord_error']])
+                    [f'{total.get(c_id)[0]} / {total.get(c_id)[1]}' if total.get(c_id)[1] else total.get(c_id)[0]
+                     for c_id, _ in campaigns] + [total['twitter_error'], total['discord_error']])
     csv_data.append(['', '', 'Total Points'] + [n for _, n in campaigns] + ['Twitter Error', 'Discord Error'])
 
     run_timestamp = str(datetime.now())

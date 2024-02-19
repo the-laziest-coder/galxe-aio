@@ -423,6 +423,9 @@ class GalxeAccount:
             case CredSource.QUIZ:
                 await self.solve_quiz(credential)
                 return False
+            case CredSource.WATCH_YOUTUBE:
+                await self.add_typed_credential(campaign_id, credential)
+                return True
             case unexpected:
                 if HIDE_UNSUPPORTED:
                     return False

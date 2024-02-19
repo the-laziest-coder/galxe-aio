@@ -20,6 +20,7 @@ class CredSource(StrEnum):
     VISIT_LINK = 'VISIT_LINK'
     QUIZ = 'QUIZ'
     SPACE_USERS = 'SPACE_USERS'
+    WATCH_YOUTUBE = 'WATCH_YOUTUBE'
 
 
 class ConditionRelation(StrEnum):
@@ -35,3 +36,4 @@ class Gamification(StrEnum):
     POINTS = 'Points'
     OAT = 'Oat'
     POINTS_MYSTERY_BOX = 'PointsMysteryBox'
+    DROP = 'Drop'
