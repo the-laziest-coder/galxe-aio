@@ -67,6 +67,7 @@ async def process_account(account_data: Tuple[int, Tuple[str, str, str, str, str
 
     account_info.twitter_error = False
     account_info.discord_error = False
+    account_info.actual_campaigns = []
 
     if '|' in account_info.proxy:
         change_link = account_info.proxy.split('|')[1]

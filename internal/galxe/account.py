@@ -16,7 +16,7 @@ from ..email import Email
 from ..models import AccountInfo
 from ..storage import Storage
 from ..twitter import Twitter
-from ..config import FAKE_TWITTER, HIDE_UNSUPPORTED, MAX_TRIES
+from ..config import FAKE_TWITTER, HIDE_UNSUPPORTED, MAX_TRIES, FORCE_LINK_EMAIL
 from ..utils import wait_a_bit, get_query_param, get_proxy_url, async_retry, log_long_exc
 
 from .client import Client
@@ -351,14 +351,14 @@ class GalxeAccount:
                 try:
                     await self._complete_credential(campaign_id, condition, credential, FAKE_TWITTER)
                 except Exception as exc:
-                    if FAKE_TWITTER and 'Error: pass_token used' in str(exc):
+                    if FAKE_TWITTER and ('Error: pass_token used' in str(exc)):
                         logger.info(f"{self.idx}) Probably can't complete with fake twitter. Trying without it")
                         await self._complete_credential(campaign_id, condition, credential, False)
                     else:
                         raise exc
                 await wait_a_bit()
             except Exception as e:
-                if 'try again in 30 seconds' in str(e):
+                if 'try again in 30 seconds' in str(e) or 'please verify after 1 minutes' in str(e):
                     try_again = True
                 await log_long_exc(self.idx, f'Failed to complete "{credential["name"]}"', e, warning=True)
         return try_again
@@ -416,6 +416,8 @@ class GalxeAccount:
         return True
 
     async def _complete_email(self, campaign_id: str, credential) -> bool:
+        if FORCE_LINK_EMAIL:
+            await self.link_email()
         match credential['credSource']:
             case CredSource.VISIT_LINK:
                 await self.add_typed_credential(campaign_id, credential)
