@@ -1,3 +1,4 @@
+import re
 import time
 import json
 import random
@@ -16,18 +17,20 @@ from ..email import Email
 from ..models import AccountInfo
 from ..storage import Storage
 from ..twitter import Twitter
+from ..onchain import OnchainAccount
 from ..config import FAKE_TWITTER, HIDE_UNSUPPORTED, MAX_TRIES, FORCE_LINK_EMAIL
-from ..utils import wait_a_bit, get_query_param, get_proxy_url, async_retry, log_long_exc
+from ..utils import wait_a_bit, get_query_param, get_proxy_url, async_retry, log_long_exc, plural_str
 
 from .client import Client
 from .fingerprint import fingerprints, captcha_retry
 from .utils import random_string_for_entropy
-from .models import Recurring, Credential, CredSource, ConditionRelation, QuizType, Gamification
-from .constants import DISCORD_AUTH_URL, GALXE_DISCORD_CLIENT_ID
+from .models import Recurring, Credential, CredSource, ConditionRelation, QuizType, Gamification, GasType
+from .constants import DISCORD_AUTH_URL, GALXE_DISCORD_CLIENT_ID, CHAIN_NAME_MAPPING, VERIFY_TRIES
 
 colorama.init()
 Faker.seed(int(time.time() * 1000))
 faker = Faker()
+faker_lock = asyncio.Lock()
 
 quiz_storage = Storage('storage/quizzes.json')
 quiz_storage.init()
@@ -45,6 +48,7 @@ class GalxeAccount:
         self.profile = None
         self.captcha = None
         self.captcha_lock = Lock()
+        self.twitter_credentials_done = set()
 
     async def close(self):
         await self.client.close()
@@ -115,8 +119,13 @@ class GalxeAccount:
         msg, signature = await self._get_evm_login_signature()
         await self.client.sign_in(msg, signature)
 
+    @classmethod
+    async def fake_username(cls):
+        async with faker_lock:
+            return faker.user_name()
+
     async def create_account(self):
-        username = faker.user_name()
+        username = await self.fake_username()
         while await self.client.is_username_exist(username):
             username += str(random.randint(0, 9))
         logger.info(f'{self.idx}) Creating Galxe account with {username} username')
@@ -274,6 +283,12 @@ class GalxeAccount:
     def _is_sequential_campaign(cls, campaign):
         return campaign['parentCampaign'].get('isSequencial')
 
+    @classmethod
+    def _get_gamification_type(cls, campaign):
+        if 'gamification' not in campaign:
+            return None
+        return campaign['gamification']['type']
+
     def _update_campaign_points(self, campaign, process_result=None):
         if self._is_parent_campaign(campaign):
             return
@@ -284,6 +299,8 @@ class GalxeAccount:
                     and process_result[0] == 'Points' and process_result[1] > 0:
                 daily_claimed = True
         self.account.points[campaign['id']] = (campaign['name'], campaign['claimedLoyaltyPoints'], daily_claimed)
+        if self._get_gamification_type(campaign) in [Gamification.OAT, Gamification.DROP]:
+            self.account.nfts[campaign['id']] = campaign['whitelistInfo']['usedCount']
 
     async def _process_campaign(self, campaign_id, process_async_func, aggr_func=None):
         info = await self.client.get_campaign_info(campaign_id)
@@ -310,8 +327,8 @@ class GalxeAccount:
 
     # Complete part
 
-    async def complete_campaign(self, campaign_id: str) -> bool:
-        return await self._process_campaign(campaign_id, self._complete_campaign_process, any)
+    async def complete_campaign(self, campaign_id: str):
+        return await self._process_campaign(campaign_id, self._complete_campaign_process)
 
     async def _complete_campaign_process(self, campaign):
         logger.info(f'{self.idx}) Starting complete {campaign["name"]}')
@@ -322,27 +339,24 @@ class GalxeAccount:
             except Exception as e:
                 logger.warning(f'{self.idx}) Campaign require email: {str(e)}')
 
-        try_again = False
-        for group_id in range(len(campaign['credentialGroups'])):
+        for i in range(max(VERIFY_TRIES, MAX_TRIES)):
 
-            need_retry = False
+            if i > 0:
+                logger.info(f'{self.idx}) Waiting for 30s to retry')
+                await asyncio.sleep(31)
 
-            for i in range(max(3, MAX_TRIES)):
-                if i > 0:
-                    logger.info(f'{self.idx}) Waiting for 30s to retry')
-                    await asyncio.sleep(31)
+            try_again = False
+            for group_id in range(len(campaign['credentialGroups'])):
 
                 cred_group = campaign['credentialGroups'][group_id]
                 need_retry = await self._complete_cred_group(campaign['id'], cred_group)
+                try_again = need_retry or try_again
+                await wait_a_bit(2)
 
-                campaign = await self.client.get_campaign_info(campaign['id'])
-                if not need_retry:
-                    break
+            if not try_again:
+                break
 
-            try_again = need_retry or try_again
-            await wait_a_bit(2)
-
-        return try_again
+            campaign = await self.client.get_campaign_info(campaign['id'])
 
     async def _complete_cred_group(self, campaign_id: str, cred_group) -> bool:
         try_again = False
@@ -391,9 +405,14 @@ class GalxeAccount:
             logger.info(f'{self.idx}) Extra wait 15s after Discord task verification')
             await asyncio.sleep(15)
 
+    quote_mention_re = re.compile(r'mention \d+ friends')
+
     async def _complete_twitter(self, campaign_id: str, credential, fake_twitter) -> bool:
         await self.link_twitter(fake_twitter)
         await self.add_typed_credential(campaign_id, credential)
+        if credential['id'] in self.twitter_credentials_done:
+            logger.info(f'{self.idx}) Twitter action was already done. Just verifying it')
+            return True
         if fake_twitter:
             return True
         try:
@@ -407,10 +426,22 @@ class GalxeAccount:
                 case CredSource.TWITTER_LIKE:
                     tweet_id = get_query_param(credential['referenceLink'], 'tweet_id')
                     await self.twitter.like(tweet_id)
+                case CredSource.TWITTER_QUOTE:
+                    text = get_query_param(credential['referenceLink'], 'text')
+                    tweet_link = text[text.rfind(' ') + 1:]
+                    text = text[:text.rfind(' ')]
+                    mentions = self.quote_mention_re.findall(credential['name'].lower())
+                    if mentions:
+                        mentions_number = int(mentions[0].split()[1])
+                        text += ''.join([f' @{await self.fake_username()}' for _ in range(mentions_number)])
+                    logger.info(f'{self.idx}) Tweet quote with text: {text}')
+                    text += '\n' + tweet_link
+                    await self.twitter.post_tweet(text)
                 case unexpected:
                     if HIDE_UNSUPPORTED:
                         return False
                     raise Exception(f'{unexpected} credential source for Twitter task is not supported yet')
+            self.twitter_credentials_done.add(credential['id'])
         except Exception as e:
             await log_long_exc(self.idx, 'Twitter action failed. Trying to verify anyway', e, warning=True)
         return True
@@ -438,6 +469,8 @@ class GalxeAccount:
             case CredSource.VISIT_LINK:
                 await self.add_typed_credential(campaign_id, credential)
                 return True
+            case CredSource.CSV:
+                raise Exception(f'{self.idx}) CSV cred source for EVM task is not supported yet')
         logger.warning(f'{self.idx}) {credential["name"]} is not done or not updated yet. Trying to verify it anyway')
         return True
 
@@ -570,12 +603,13 @@ class GalxeAccount:
         return 0 < campaign['whitelistInfo']['maxCount'] <= campaign['whitelistInfo']['usedCount']
 
     def already_claimed(self, campaign) -> bool:
-        if 'gamification' not in campaign:
+        gamification_type = self._get_gamification_type(campaign)
+        if gamification_type is None:
             return True
-        match campaign['gamification']['type']:
+        match gamification_type:
             case Gamification.POINTS:
                 return self._campaign_points_claimed(campaign)
-            case Gamification.OAT:
+            case Gamification.OAT | Gamification.DROP:
                 return self._campaign_points_claimed(campaign) and self._campaign_nft_claimed(campaign)
             case Gamification.POINTS_MYSTERY_BOX:
                 return self._campaign_nft_claimed(campaign)
@@ -590,8 +624,10 @@ class GalxeAccount:
 
     async def _claim_campaign_process(self, campaign):
         if self.already_claimed(campaign):
+            nft_cnt = self.account.nfts.get(campaign["id"])
+            nft_info = f' and {plural_str(nft_cnt, "NFT")}' if nft_cnt is not None else ''
             logger.info(f'{self.idx}) {campaign["name"]} already claimed '
-                        f'{self.account.points[campaign["id"]][1]} points')
+                        f'{self.account.points[campaign["id"]][1]} points{nft_info}')
             return
         logger.info(f'{self.idx}) Starting claim {campaign["name"]}')
         claimable = False
@@ -635,22 +671,16 @@ class GalxeAccount:
             logger.info(f'{self.idx}) ' + not_claimable_msg)
         return claimable
 
-    @captcha_retry
-    @async_retry
     async def _claim_campaign_rewards(self, campaign):
-        if 'gamification' not in campaign:
+        reward_type = self._get_gamification_type(campaign)
+        if reward_type is None:
             return
 
-        reward_type = campaign['gamification']['type']
-
-        if campaign['chain'] == 'APTOS':
-            raise Exception(f'Aptos claim rewards is not supported')
-
-        captcha = await self.get_captcha()
-        claim_data = await self.client.prepare_participate(campaign['id'], captcha, campaign['chain'])
+        claim_data = await self._get_claim_data(campaign)
 
         claimed_points = 0
-        claimed_oats = 0
+        claimed_nfts = 0
+        nft_type = ''
         match reward_type:
             case Gamification.POINTS | Gamification.POINTS_MYSTERY_BOX:
                 if claim_data.get('loyaltyPointsTxResp'):
@@ -658,18 +688,64 @@ class GalxeAccount:
                 claimed_log = f'{claimed_points} points'
                 if reward_type == Gamification.POINTS_MYSTERY_BOX:
                     claimed_log += ' from Mystery Box'
-            case Gamification.OAT:
-                if campaign['gasType'] == 'Gasless':
-                    claimed_oats = len(claim_data['mintFuncInfo']['verifyIDs'])
-                    claimed_log = f'{claimed_oats} OAT{"s" if claimed_oats > 1 else ""}'
-                else:
-                    raise Exception(f'Only gasless OAT reward type is supported for claim')
+            case Gamification.OAT | Gamification.DROP:
+                nft_type = 'NFT' if reward_type == Gamification.DROP else 'OAT'
+                if campaign['gasType'] == GasType.GAS:
+                    await self._claim_gas_reward(campaign, claim_data)
+                claimed_nfts = len(claim_data['mintFuncInfo']['verifyIDs'])
+                claimed_log = plural_str(claimed_nfts, nft_type)
+
             case unexpected:
                 raise Exception(f'{unexpected} reward type is not supported for claim yet')
 
         logger.success(f'{self.idx}) Campaign {campaign["name"]} claimed {claimed_log}')
 
         result = ('Points', claimed_points) if claimed_points > 0 else None
-        result = ('OATs', claimed_oats) if claimed_oats > 0 else result
+        result = (nft_type, claimed_nfts) if claimed_nfts > 0 else result
 
         return result
+
+    @captcha_retry
+    @async_retry
+    async def _get_claim_data(self, campaign):
+        chain = campaign['chain']
+        if chain == 'APTOS':
+            raise Exception(f'Aptos claim rewards is not supported')
+        captcha = await self.get_captcha()
+        return await self.client.prepare_participate(campaign['id'], captcha, chain)
+
+    async def _claim_gas_reward(self, campaign, claim_data):
+        space_station = campaign['spaceStation']
+        space_station_address, space_chain = space_station['address'], space_station['chain']
+        chain = CHAIN_NAME_MAPPING.get(space_chain, space_chain.capitalize())
+        number_id = campaign['numberID']
+
+        signature = claim_data['signature']
+        nonce = claim_data['nonce']
+        nft_core_address = claim_data['mintFuncInfo']['nftCoreAddress']
+        verify_id = claim_data['mintFuncInfo']['verifyIDs'][0]
+        powah = claim_data['mintFuncInfo']['powahs'][0]
+
+        async with OnchainAccount(self.account, chain) as onchain:
+            tx_hash = await onchain.claim(
+                space_station_address,
+                number_id, signature, nft_core_address, verify_id, powah
+            )
+
+        try:
+            await self.client.participate(campaign['id'], space_chain, nonce, tx_hash, verify_id)
+        except Exception as e:
+            await log_long_exc(self.idx, 'Claim confirmation in API failed', e, warning=True)
+
+    # Stats part
+
+    async def spaces_stats(self):
+        cursor, has_next_page = '', True
+        while has_next_page:
+            result = await self.client.profile_leaderboard(cursor)
+            page_info = result['pageInfo']
+            cursor, has_next_page = page_info['endCursor'], page_info['hasNextPage']
+            for edge in result['edges']:
+                node = edge['node']
+                space = node['space']
+                self.account.spaces_points[space['alias']] = (space['name'], node['points'], node['rank'])

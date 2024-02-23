@@ -4,15 +4,23 @@
  - Link email: IMAP or mail3.me
  - Link Discord
  - Complete Galxe tasks
- - Claim Galxe points, gas-less OATs and Mystery Boxes
+ - Claim rewards
  - Quiz solver
  - Accounts statistics
 
 ### Supported tasks:
- - Twitter: Follow, Retweet, Like
+ - Twitter: Follow, Retweet, Like, Quote
  - Visit link
+ - Watch YouTube
  - Solve quiz
  - Follow Galxe space
+ - Tries to verify all the others
+
+### Supported rewards:
+ - Points
+ - Mystery Boxes
+ - Gas-less OATs
+ - Gas OATs and NFTs
 
 ### Follow: https://t.me/thelaziestcoder
 

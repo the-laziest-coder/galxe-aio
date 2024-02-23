@@ -17,10 +17,12 @@ class CredSource(StrEnum):
     TWITTER_FOLLOW = 'TWITTER_FOLLOW'
     TWITTER_RT = 'TWITTER_RT'
     TWITTER_LIKE = 'TWITTER_LIKE'
+    TWITTER_QUOTE = 'TWITTER_QUOTE'
     VISIT_LINK = 'VISIT_LINK'
     QUIZ = 'QUIZ'
     SPACE_USERS = 'SPACE_USERS'
     WATCH_YOUTUBE = 'WATCH_YOUTUBE'
+    CSV = 'CSV'
 
 
 class ConditionRelation(StrEnum):
@@ -37,3 +39,8 @@ class Gamification(StrEnum):
     OAT = 'Oat'
     POINTS_MYSTERY_BOX = 'PointsMysteryBox'
     DROP = 'Drop'
+
+
+class GasType(StrEnum):
+    GAS_LESS = 'Gasless'
+    GAS = 'Gas'

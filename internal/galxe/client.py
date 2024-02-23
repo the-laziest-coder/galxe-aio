@@ -359,3 +359,16 @@ class Client(TLSClient):
             },
         }
         return await self.api_request(body)
+
+    async def profile_leaderboard(self, cursor: str):
+        body = {
+            'operationName': 'ProfileLeaderboard',
+            'query': 'query ProfileLeaderboard($address: String!, $pageSize: Int, $cursorAfter: String) {\n  addressInfo(address: $address) {\n    id\n    loyaltyPointsRanks(first: $pageSize, cursorAfter: $cursorAfter) {\n      pageInfo {\n        endCursor\n        hasNextPage\n        __typename\n      }\n      edges {\n        node {\n          id\n          rank\n          points\n          space {\n            name\n            alias\n            thumbnail\n            __typename\n          }\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}\n',
+            'variables': {
+                'address': self.address,
+                'pageSize': 20,
+            },
+        }
+        if cursor:
+            body['variables']['cursorAfter'] = cursor
+        return await self.api_request(body, lambda r: r['data']['addressInfo']['loyaltyPointsRanks'])

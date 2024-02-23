@@ -2,6 +2,7 @@ import random
 import asyncio
 import aiofiles
 from web3 import AsyncWeb3
+from retry import retry
 from loguru import logger
 from aiohttp import ClientResponse
 from datetime import datetime
@@ -9,6 +10,12 @@ from aiohttp_socks import ProxyConnector
 from urllib.parse import urlparse, parse_qs
 
 from ..config import MAX_TRIES
+
+from .async_web3 import AsyncHTTPProviderWithUA
+
+
+def plural_str(cnt: int, name: str):
+    return f'{cnt} {name}{"s" if cnt > 1 else ""}'
 
 
 def int_to_decimal(i, n):
@@ -99,3 +106,10 @@ def get_query_param(url: str, name: str):
 
 def to_bytes(hex_str):
     return AsyncWeb3.to_bytes(hexstr=hex_str)
+
+
+@retry(tries=MAX_TRIES, delay=1.5, max_delay=10, backoff=2, jitter=(0, 1))
+def get_w3(rpc_url: str, proxy: str = None):
+    proxy = get_proxy_url(proxy)
+    req_kwargs = {} if proxy is None else {'proxy': proxy}
+    return AsyncWeb3(AsyncHTTPProviderWithUA(rpc_url, req_kwargs))

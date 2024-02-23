@@ -11,8 +11,8 @@ from datetime import datetime
 from typing import Tuple, Optional
 from eth_account import Account as EthAccount
 
-from internal.config import WAIT_BETWEEN_ACCOUNTS, THREADS_NUM, MAX_TRIES, \
-    SKIP_FIRST_ACCOUNTS, RANDOM_ORDER, UPDATE_STORAGE_ACCOUNT_INFO, GALXE_CAMPAIGN_IDS
+from internal.config import WAIT_BETWEEN_ACCOUNTS, THREADS_NUM, \
+    SKIP_FIRST_ACCOUNTS, RANDOM_ORDER, UPDATE_STORAGE_ACCOUNT_INFO, GALXE_CAMPAIGN_IDS, SPACES_STATS
 from internal.utils import async_retry, wait_a_bit, log_long_exc
 from internal.galxe import GalxeAccount
 from internal.models import AccountInfo
@@ -86,6 +86,11 @@ async def process_account(account_data: Tuple[int, Tuple[str, str, str, str, str
             for campaign_id in GALXE_CAMPAIGN_IDS:
                 await galxe_account.complete_campaign(campaign_id)
                 await galxe_account.claim_campaign(campaign_id)
+
+            await wait_a_bit()
+
+            logger.info(f'{idx}) Checking spaces stats')
+            await galxe_account.spaces_stats()
 
     except Exception as galxe_exc:
         exc = Exception(f'Galxe error: {galxe_exc}')
@@ -196,6 +201,7 @@ def main():
     print()
 
     campaigns = {}
+    spaces = {}
     for w in evm_wallets:
         account = storage.get_final_account_info(EthAccount().from_key(w).address)
         if account is None:
@@ -203,15 +209,25 @@ def main():
         for c_id, value in account.actual_points.items():
             if c_id not in campaigns:
                 campaigns[c_id] = value[0]
+        for alias, value in account.spaces_points.items():
+            if alias not in spaces:
+                spaces[alias] = value[0]
     campaigns = list(campaigns.items())
+    spaces = [(alias, name) for alias, name in spaces.items() if not SPACES_STATS or alias in SPACES_STATS]
 
     csv_data = [['#', 'EVM Address', 'Total Points'] + [n for _, n in campaigns] + ['Twitter Error', 'Discord Error']]
     total = {'total_points': 0, 'twitter_error': 0, 'discord_error': 0}
+    spaces_csv_data = [['#', 'EVM Address'], ['#', 'EVM Address']]
+    for _, name in spaces:
+        spaces_csv_data[0].extend([name, name])
+        spaces_csv_data[1].extend(['Points', 'Rank'])
+    spaces_total = {alias: 0 for alias, _ in spaces}
     for idx, w in enumerate(evm_wallets, start=1):
         evm_address = EthAccount().from_key(w).address
         account = storage.get_final_account_info(evm_address)
         if account is None:
             csv_data.append([idx, evm_address])
+            spaces_csv_data.append([idx, evm_address])
             continue
 
         points = [account.campaign_points_str(c_id) for c_id, _ in campaigns]
@@ -221,7 +237,7 @@ def main():
 
         for c_id, _ in campaigns:
             if c_id not in total:
-                total[c_id] = [0, None]
+                total[c_id] = [0, None, None]
             if c_id not in account.points:
                 continue
             total[c_id][0] += account.points[c_id][1]
@@ -229,6 +245,13 @@ def main():
                 if total[c_id][1] is None:
                     total[c_id][1] = 0
                 total[c_id][1] += 1 if account.points[c_id][2] else 0
+        for c_id, _ in campaigns:
+            nfts_cnt = account.nfts.get(c_id)
+            if nfts_cnt is None:
+                continue
+            if total[c_id][2] is None:
+                total[c_id][2] = 0
+            total[c_id][2] += nfts_cnt
 
         total['twitter_error'] += 1 if account.twitter_error else 0
         total['discord_error'] += 1 if account.discord_error else 0
@@ -236,20 +259,43 @@ def main():
         csv_data.append([idx, evm_address, total_points] + points +
                         [account.twitter_error_s, account.discord_error_s])
 
+        spaces_info = []
+        for alias, _ in spaces:
+            space_points, space_rank = 0, None
+            if alias in account.spaces_points:
+                space_points, space_rank = account.spaces_points[alias][1], account.spaces_points[alias][2]
+            spaces_info.extend([space_points, space_rank])
+            spaces_total[alias] += space_points
+
+        spaces_csv_data.append([idx, evm_address] + spaces_info)
+
     csv_data.append([])
     csv_data.append(['', '', total['total_points']] +
-                    [f'{total.get(c_id)[0]} / {total.get(c_id)[1]}' if total.get(c_id)[1] else total.get(c_id)[0]
+                    [(f'{total[c_id][0]} / {total[c_id][1]}'
+                      if total[c_id][1] else str(total[c_id][0])) +
+                     f'{" / " + str(total[c_id][2]) if total[c_id][2] is not None else ""}'
                      for c_id, _ in campaigns] + [total['twitter_error'], total['discord_error']])
     csv_data.append(['', '', 'Total Points'] + [n for _, n in campaigns] + ['Twitter Error', 'Discord Error'])
 
+    spaces_csv_data.extend([[], ['', ''], ['', ''], ['', '']])
+    for alias, name in spaces:
+        spaces_csv_data[-3].extend([spaces_total[alias], ''])
+        spaces_csv_data[-2].extend(['Points', 'Rank'])
+        spaces_csv_data[-1].extend([name, name])
+
     run_timestamp = str(datetime.now())
     csv_data.extend([[], ['', 'Timestamp', run_timestamp]])
+    spaces_csv_data.extend([[], ['', 'Timestamp', run_timestamp]])
 
     with open('results/stats.csv', 'w', encoding='utf-8', newline='') as file:
         writer = csv.writer(file, delimiter=';')
         writer.writerows(csv_data)
+    with open('results/spaces_stats.csv', 'w', encoding='utf-8', newline='') as file:
+        writer = csv.writer(file, delimiter=';')
+        writer.writerows(spaces_csv_data)
 
-    logger.info('Stats are stored in results/stats.csv')
+    logger.info('Campaigns stats are stored in results/stats.csv')
+    logger.info('Spaces stats are stored in results/spaces_stats.csv')
     logger.info(f'Timestamp: {run_timestamp}')
     print()
 
