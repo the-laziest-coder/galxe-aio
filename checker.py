@@ -49,7 +49,7 @@ async def process_batch(bid: int, batch, async_func):
         except Exception as e:
             e_msg = str(e)
             if 'Could not authenticate you' in e_msg or 'account is suspended' in e_msg \
-                    or 'account has been locked' in e_msg:
+                    or 'account has been locked' in e_msg or 'account is temporarily locked' in e_msg:
                 failed.append(d)
             await log_long_exc(d[0], 'Process account error', e)
     return failed
