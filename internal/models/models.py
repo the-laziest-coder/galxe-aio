@@ -43,6 +43,8 @@ class AccountInfo:
                  for c_id, (n, _, _) in self.actual_points.items()]
         total = sum(v for _, v, _ in self.actual_points.values())
         total_nfts = sum(v for _, _, v in stats if v is not None)
+        if not any(v is not None for _, _, v in stats):
+            total_nfts = None
         stats.append(('Total', total, total_nfts))
         return ''.join([f'\t{name}: {pv} Points{", " + plural_str(nv, "NFT") if nv is not None else ""}\n'
                         for name, pv, nv in stats])[:-1]

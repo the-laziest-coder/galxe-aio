@@ -3,7 +3,8 @@
  - Link Twitter account
  - Link email: IMAP or mail3.me
  - Link Discord
- - Complete Galxe tasks
+ - Complete requirements
+ - Complete tasks
  - Claim rewards
  - Quiz solver
  - Accounts statistics

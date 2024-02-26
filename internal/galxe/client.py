@@ -62,10 +62,10 @@ class Client(TLSClient):
     async def galxe_id_exist(self) -> bool:
         body = {
             "operationName": "GalxeIDExist",
+            "query": "query GalxeIDExist($schema: String!) {\n  galxeIdExist(schema: $schema)\n}\n",
             "variables": {
                 "schema": self.full_address,
             },
-            "query": "query GalxeIDExist($schema: String!) {\n  galxeIdExist(schema: $schema)\n}\n"
         }
         return await self.api_request(body, lambda resp: resp['data']['galxeIdExist'])
 
