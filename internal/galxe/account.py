@@ -339,7 +339,7 @@ class GalxeAccount:
             except Exception as e:
                 logger.warning(f'{self.idx}) Campaign require email: {str(e)}')
 
-        if campaign['taskConfig']['participateCondition'] is not None:
+        if 'taskConfig' in campaign and campaign['taskConfig']['participateCondition'] is not None:
             logger.info(f'{self.idx}) Completing requirements')
             for i in range(max(VERIFY_TRIES, MAX_TRIES)):
                 if i > 0:
@@ -596,7 +596,7 @@ class GalxeAccount:
         cred_ids = []
         for cred_group in campaign['credentialGroups']:
             cred_ids.extend([cred['id'] for cred in cred_group['credentials'] if cred['eligible'] == 0])
-        if campaign['taskConfig']['participateCondition'] is not None:
+        if 'taskConfig' in campaign and campaign['taskConfig']['participateCondition'] is not None:
             conditions = campaign['taskConfig']['participateCondition']['conditions']
             cred_ids.extend([c['cred']['id'] for c in conditions])
         if len(cred_ids) == 0:
