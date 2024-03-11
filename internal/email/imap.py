@@ -28,7 +28,10 @@ class IMAPClient(BaseClient):
         return self.account.email_username
 
     async def _login(self):
-        self.imap = aioimaplib.IMAP4_SSL(IMAP_SERVERS[self.account.email_username.split('@')[1]])
+        email_domain = self.account.email_username.split('@')[1]
+        if email_domain not in IMAP_SERVERS:
+            raise Exception(f'Imap server for {email_domain} not found. Add it in internal/email/constants.py')
+        self.imap = aioimaplib.IMAP4_SSL(IMAP_SERVERS[email_domain])
         await self.imap.wait_hello_from_server()
         await self.imap.login(self.account.email_username, self.account.email_password)
         await self.imap.select()

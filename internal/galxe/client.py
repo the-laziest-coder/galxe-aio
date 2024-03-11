@@ -164,26 +164,39 @@ class Client(TLSClient):
         }
         await self.api_request(body, exc_condition=lambda resp: resp['data']['verifyTwitterAccount'] is None)
 
-    async def check_discord_account(self, token):
+    async def get_social_auth_url(self):
+        body = {
+            'operationName': 'getSocialAuthUrl',
+            'query': 'query getSocialAuthUrl($schema: String!, $type: SocialAccountType!) {\n  getSocialAuthUrl(schema: $schema, type: $type)\n}\n',
+            'variables': {
+                'schema': self.full_address,
+                'type': 'DISCORD',
+            },
+        }
+        return await self.api_request(body, lambda resp: resp['data']['getSocialAuthUrl'])
+
+    async def check_discord_account(self, state, token):
         body = {
             'operationName': 'checkDiscordAccount',
             'query': 'mutation checkDiscordAccount($input: VerifyDiscordAccountInput!) {\n  checkDiscordAccount(input: $input) {\n    address\n    discordUserID\n    __typename\n  }\n}\n',
             'variables': {
                 'input': {
                     'address': self.address,
+                    'state': state,
                     'token': token,
                 },
             },
         }
         await self.api_request(body, exc_condition=lambda resp: resp['data']['checkDiscordAccount'] is None)
 
-    async def verify_discord_account(self, token):
+    async def verify_discord_account(self, state, token):
         body = {
             'operationName': 'VerifyDiscord',
             'query': 'mutation VerifyDiscord($input: VerifyDiscordAccountInput!) {\n  verifyDiscordAccount(input: $input) {\n    address\n    discordUserID\n    discordUserName\n    __typename\n  }\n}\n',
             'variables': {
                 'input': {
                     'address': self.address,
+                    'state': state,
                     'token': token,
                 },
             },

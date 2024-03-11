@@ -231,12 +231,15 @@ class GalxeAccount:
                 logger.info(f'{self.idx}) Another Discord account already linked with this EVM address: '
                             f'{existed_discord_username}')
 
+        discord_auth_link = await self.client.get_social_auth_url()
+        state = get_query_param(discord_auth_link, 'state')
+
         params = {
             'client_id': GALXE_DISCORD_CLIENT_ID,
             'response_type': 'code',
             'redirect_uri': 'https://galxe.com',
             'scope': 'identify guilds guilds.members.read',
-            'state': f'Discord_Auth,{self.account.evm_address},false',
+            'state': f'Discord_Auth,{self.account.evm_address},false,{state}',
         }
         body = {
             'permissions': '0',
@@ -249,8 +252,8 @@ class GalxeAccount:
                                               params=params, json=body,
                                               headers={'Authorization': self.account.discord_token})
             token = get_query_param(location, 'code')
-            await self.client.check_discord_account(token)
-            await self.client.verify_discord_account(token)
+            await self.client.check_discord_account(state, token)
+            await self.client.verify_discord_account(state, token)
         except Exception as e:
             if token is None:
                 self.account.discord_error = True
