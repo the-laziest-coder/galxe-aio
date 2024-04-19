@@ -24,7 +24,7 @@ class Client(TLSClient):
                     operation_name = body['operationName']
                     operation_name = operation_name[0].lower() + operation_name[1:]
                     if 'data' in resp and operation_name in resp['data'] and 'message' in resp['data'][operation_name]:
-                        raise Exception(resp['data'][operation_name]['message'])
+                        raise Exception(f"Message: \"{resp['data'][operation_name]['message']}\"")
                     raise Exception()
             if response_extract_func is not None:
                 return response_extract_func(resp)
@@ -238,6 +238,14 @@ class Client(TLSClient):
                     'operation': 'APPEND',
                 }
             }
+        }
+        await self.api_request(body)
+
+    async def twitter_oauth2_status(self):
+        body = {
+            'operationName': 'TwitterOauth2Status',
+            'query': 'query TwitterOauth2Status {\n  twitterOauth2Status {\n    oauthRateLimited\n    __typename\n  }\n}\n',
+            'variables': {},
         }
         await self.api_request(body)
 

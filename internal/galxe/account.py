@@ -396,7 +396,8 @@ class GalxeAccount:
                         raise exc
                 await wait_a_bit()
             except Exception as e:
-                if 'try again in 30 seconds' in str(e) or 'please verify after 1 minutes' in str(e):
+                if ('try again in 30 seconds' in str(e) or 'please verify after 1 minutes' in str(e) or
+                        'Message: "None": Status = 200' in str(e)):
                     try_again = True
                 await log_long_exc(self.idx, f'Failed to complete "{credential["name"]}"', e, warning=True)
         return try_again
@@ -586,6 +587,7 @@ class GalxeAccount:
         sync_options = self._default_sync_options(credential_id)
         match cred_type:
             case Credential.TWITTER:
+                await self.client.twitter_oauth2_status()
                 captcha = await self.get_captcha()
                 sync_options.update({
                     'twitter': {

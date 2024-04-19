@@ -23,7 +23,7 @@ class Fingerprints:
             fingerprint = ''
             try:
                 page = await context.new_page()
-                await page.goto('https://galxe.com/protocol', wait_until='domcontentloaded', timeout=15000)
+                await page.goto('https://app.galxe.com/quest', wait_until='domcontentloaded', timeout=15000)
                 await page.evaluate(f'''
                     window.initGeetest4({{captchaId: "{GALXE_CAPTCHA_ID}", product: "bind"}})
                 ''')
