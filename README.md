@@ -7,6 +7,8 @@
  - Complete tasks
  - Claim rewards
  - Quiz solver
+ - Submit survey
+ - Referral links
  - Accounts statistics
 
 ### Supported tasks:
@@ -14,6 +16,7 @@
  - Visit link
  - Watch YouTube
  - Solve quiz
+ - Survey
  - Follow Galxe space
  - Tries to verify all the others
 

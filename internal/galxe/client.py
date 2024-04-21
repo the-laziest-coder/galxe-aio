@@ -225,6 +225,16 @@ class Client(TLSClient):
         }
         return await self.api_request(body, lambda resp: resp['data']['credential']['credQuiz']['quizzes'])
 
+    async def read_survey(self, survey_id):
+        body = {
+            'operationName': 'readSurvey',
+            'query': 'query readSurvey($id: ID!) {\n  credential(id: $id) {\n    metadata {\n      survey {\n        ...SurveyCredMetadataFrag\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}\n\nfragment SurveyCredMetadataFrag on SurveyCredMetadata {\n  surveies {\n    title\n    type\n    items {\n      value\n      __typename\n    }\n    __typename\n  }\n  __typename\n}\n',
+            'variables': {
+                'id': survey_id,
+            }
+        }
+        return await self.api_request(body, lambda resp: resp['data']['credential']['metadata']['survey']['surveies'])
+
     async def add_typed_credential_items(self, campaign_id, credential_id, captcha):
         body = {
             'operationName': 'AddTypedCredentialItems',
@@ -272,7 +282,7 @@ class Client(TLSClient):
             exc_condition=exc_cond if only_allow else None,
         )
 
-    async def prepare_participate(self, campaign_id, captcha, chain):
+    async def prepare_participate(self, campaign_id, captcha, chain, referral_code=None):
         body = {
             'operationName': 'PrepareParticipate',
             'query': 'mutation PrepareParticipate($input: PrepareParticipateInput!) {\n  prepareParticipate(input: $input) {\n    allow\n    disallowReason\n    signature\n    nonce\n    mintFuncInfo {\n      funcName\n      nftCoreAddress\n      verifyIDs\n      powahs\n      cap\n      __typename\n    }\n    extLinkResp {\n      success\n      data\n      error\n      __typename\n    }\n    metaTxResp {\n      metaSig2\n      autoTaskUrl\n      metaSpaceAddr\n      forwarderAddr\n      metaTxHash\n      reqQueueing\n      __typename\n    }\n    solanaTxResp {\n      mint\n      updateAuthority\n      explorerUrl\n      signedTx\n      verifyID\n      __typename\n    }\n    aptosTxResp {\n      signatureExpiredAt\n      tokenName\n      __typename\n    }\n    tokenRewardCampaignTxResp {\n      signatureExpiredAt\n      verifyID\n      __typename\n    }\n    loyaltyPointsTxResp {\n      TotalClaimedPoints\n      __typename\n    }\n    __typename\n  }\n}\n',
@@ -287,6 +297,8 @@ class Client(TLSClient):
                 },
             },
         }
+        if referral_code:
+            body['variables']['input']['referralCode'] = referral_code
 
         def handle_resp(resp):
             result = resp['data']['prepareParticipate']

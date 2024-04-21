@@ -1,3 +1,4 @@
+import csv
 import toml
 
 
@@ -15,6 +16,12 @@ RANDOM_ORDER = cfg.get('RANDOM_ORDER')
 FAKE_TWITTER = cfg.get('FAKE_TWITTER')
 FORCE_LINK_EMAIL = cfg.get('FORCE_LINK_EMAIL')
 GALXE_CAMPAIGN_IDS = cfg.get('GALXE_CAMPAIGN_IDS')
+REFERRAL_LINKS = [line.strip() for line in open('files/referral_links.txt', 'r', encoding='utf-8').read().splitlines()
+                  if line.strip() != '']
+with open('files/surveys.csv', 'r', encoding='utf-8') as file:
+    reader = csv.reader(file)
+    SURVEYS = [row for row in reader]
+SURVEYS = {row[0].lower(): row[1:] for row in SURVEYS}
 HIDE_UNSUPPORTED = cfg.get('HIDE_UNSUPPORTED')
 SPACES_STATS = cfg.get('SPACES_STATS')
 RPCs = cfg.get('RPCs')

@@ -1,6 +1,5 @@
 import sys
 import csv
-import time
 import random
 import aiohttp
 import asyncio
@@ -12,8 +11,9 @@ from typing import Tuple, Optional
 from eth_account import Account as EthAccount
 
 from internal.config import WAIT_BETWEEN_ACCOUNTS, THREADS_NUM, \
-    SKIP_FIRST_ACCOUNTS, RANDOM_ORDER, UPDATE_STORAGE_ACCOUNT_INFO, GALXE_CAMPAIGN_IDS, SPACES_STATS
-from internal.utils import async_retry, wait_a_bit, log_long_exc
+    SKIP_FIRST_ACCOUNTS, RANDOM_ORDER, UPDATE_STORAGE_ACCOUNT_INFO, \
+    GALXE_CAMPAIGN_IDS, REFERRAL_LINKS, SURVEYS, SPACES_STATS
+from internal.utils import async_retry, wait_a_bit, log_long_exc, get_query_param
 from internal.galxe import GalxeAccount
 from internal.models import AccountInfo
 from internal.storage import AccountStorage
@@ -166,6 +166,27 @@ def main():
         except Exception as e:
             logger.error(f'Wrong EVM private key #{idx}: {str(e)}')
             return
+
+    for i, ref_link in enumerate(REFERRAL_LINKS):
+        try:
+            if not ref_link.startswith('https://app.galxe.com/quest/'):
+                raise Exception(f'should start with "https://app.galxe.com/quest/"')
+            ref_campaign_id = ref_link.split('/')[-1].split('?')[0]
+            referral_code = get_query_param(ref_link, 'referral_code')
+            REFERRAL_LINKS[i] = (ref_campaign_id, referral_code)
+        except Exception as e:
+            logger.error(f'Incorrect referral link {ref_link}: {e}')
+            return
+
+    if 'address' not in SURVEYS:
+        logger.error('Incorrect format of surveys.csv')
+        return
+    survey_campaign_ids = [c_id.strip() for c_id in SURVEYS['address']]
+    for evm_address, answers in SURVEYS.items():
+        if evm_address == 'address':
+            continue
+        answers_by_ids = {campaign_id: answers[i] for i, campaign_id in enumerate(survey_campaign_ids)}
+        SURVEYS[evm_address] = answers_by_ids
 
     want_only = []
 

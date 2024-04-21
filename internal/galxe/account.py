@@ -18,7 +18,7 @@ from ..models import AccountInfo
 from ..storage import Storage
 from ..twitter import Twitter
 from ..onchain import OnchainAccount
-from ..config import FAKE_TWITTER, HIDE_UNSUPPORTED, MAX_TRIES, FORCE_LINK_EMAIL
+from ..config import FAKE_TWITTER, HIDE_UNSUPPORTED, MAX_TRIES, FORCE_LINK_EMAIL, REFERRAL_LINKS, SURVEYS
 from ..utils import wait_a_bit, get_query_param, get_proxy_url, async_retry, log_long_exc, plural_str
 
 from .client import Client
@@ -484,6 +484,9 @@ class GalxeAccount:
             case CredSource.WATCH_YOUTUBE:
                 await self.add_typed_credential(campaign_id, credential)
                 return True
+            case CredSource.SURVEY:
+                await self._complete_survey(campaign_id, credential)
+                return False
             case unexpected:
                 if HIDE_UNSUPPORTED:
                     return False
@@ -573,6 +576,24 @@ class GalxeAccount:
             sync_options.update({'quiz': {'answers': [str(a) for a in answers]}})
             await self.client.sync_credential_value(sync_options, quiz=True)
             logger.success(f'{self.idx}) {quiz["name"]} answers restored and verified')
+
+    async def _complete_survey(self, campaign_id, survey):
+        survey_id = survey['id']
+        survey_name = survey['name']
+        logger.info(f'{self.idx}) Processing survey "{survey_name}"')
+        questions = await self.client.read_survey(survey_id)
+        answers = SURVEYS.get(self.account.evm_address.lower(), {}).get(campaign_id)
+        if not answers:
+            logger.warning(f'{self.idx}) No answers provided for {self.account.evm_address}')
+            return False
+        answers = [a.strip() for a in answers.split('|')]
+        if len(answers) != len(questions):
+            logger.warning(f'{self.idx}) Expected {len(questions)} answers, but only {len(answers)} provided')
+            return False
+        sync_options = self._default_sync_options(survey_id)
+        sync_options.update({'survey': {'answers': answers}})
+        await self.client.sync_credential_value(sync_options, only_allow=False)
+        logger.success(f'{self.idx}) "{survey_name}" submitted')
 
     @captcha_retry
     @async_retry
@@ -734,6 +755,15 @@ class GalxeAccount:
 
         return result
 
+    @classmethod
+    def get_referral_code(cls, campaign):
+        for campaign_id, ref_code in REFERRAL_LINKS:
+            if campaign['id'] == campaign_id:
+                return ref_code
+            if campaign['parentCampaign'] is not None and campaign['parentCampaign']['id'] == campaign_id:
+                return ref_code
+        return None
+
     @captcha_retry
     @async_retry
     async def _get_claim_data(self, campaign):
@@ -741,7 +771,8 @@ class GalxeAccount:
         if chain == 'APTOS':
             raise Exception(f'Aptos claim rewards is not supported')
         captcha = await self.get_captcha()
-        return await self.client.prepare_participate(campaign['id'], captcha, chain)
+        return await self.client.prepare_participate(campaign['id'], captcha, chain,
+                                                     referral_code=self.get_referral_code(campaign))
 
     async def _claim_gas_reward(self, campaign, claim_data):
         space_station = campaign['spaceStation']
