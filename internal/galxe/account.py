@@ -591,6 +591,7 @@ class GalxeAccount:
             logger.warning(f'{self.idx}) Expected {len(questions)} answers, but only {len(answers)} provided')
             return False
         sync_options = self._default_sync_options(survey_id)
+        logger.info(f'{self.idx}) Sending answers: {answers}')
         sync_options.update({'survey': {'answers': answers}})
         await self.client.sync_credential_value(sync_options, only_allow=False)
         logger.success(f'{self.idx}) "{survey_name}" submitted')
