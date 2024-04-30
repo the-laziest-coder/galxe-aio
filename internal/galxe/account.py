@@ -18,6 +18,7 @@ from ..models import AccountInfo
 from ..storage import Storage
 from ..twitter import Twitter
 from ..onchain import OnchainAccount
+from ..captcha import solve_geetest
 from ..config import FAKE_TWITTER, HIDE_UNSUPPORTED, MAX_TRIES, FORCE_LINK_EMAIL, REFERRAL_LINKS, SURVEYS
 from ..utils import wait_a_bit, get_query_param, get_proxy_url, async_retry, log_long_exc, plural_str
 
@@ -59,44 +60,23 @@ class GalxeAccount:
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         await self.close()
 
+    @async_retry
     async def get_captcha(self):
         try:
-            call = int(time.time() * 1e3)
-            params = {
-                'captcha_id': GALXE_CAPTCHA_ID,
-                'challenge': str(uuid4()),
-                'client_type': 'web',
-                'lang': 'en-us',
-                'callback': 'geetest_{}'.format(call),
-            }
-            resp_text = await self.client.get('https://gcaptcha4.geetest.com/load', with_text=True, params=params)
-            try:
-                js_data = json.loads(resp_text.strip('geetest_{}('.format(call)).strip(')'))['data']
-            except Exception:
-                raise Exception('Captcha load: ' + resp_text)
-
-            params = {
-                'captcha_id': GALXE_CAPTCHA_ID,
-                'client_type': 'web',
-                'lot_number': js_data['lot_number'],
-                'payload': js_data['payload'],
-                'process_token': js_data['process_token'],
-                'payload_protocol': '1',
-                'pt': '1',
-                'w': await fingerprints.get(),
-                'callback': 'geetest_{}'.format(call),
-            }
-            resp_text = await self.client.get('https://gcaptcha4.geetest.com/verify', with_text=True, params=params)
-            try:
-                data = json.loads(resp_text.strip('geetest_{}('.format(call)).strip(')'))['data']
-            except Exception:
-                raise Exception('Captcha verify: ' + resp_text)
-
+            solution = await solve_geetest(
+                self.idx, 'https://app.galxe.com/quest', self.account.proxy,
+                GALXE_CAPTCHA_ID, str(uuid4()), 4,
+                {
+                    'captcha_id': GALXE_CAPTCHA_ID,
+                    'client_type': 'web',
+                    'lang': 'en-us',
+                }
+            )
             return {
-                'lotNumber': data['lot_number'],
-                'captchaOutput': data['seccode']['captcha_output'],
-                'passToken': data['seccode']['pass_token'],
-                'genTime': data['seccode']['gen_time'],
+                'lotNumber': solution['lot_number'],
+                'captchaOutput': solution['captcha_output'],
+                'passToken': solution['pass_token'],
+                'genTime': solution['gen_time'],
             }
         except Exception as e:
             raise Exception(f'Failed to solve captcha: {str(e)}')
@@ -396,8 +376,11 @@ class GalxeAccount:
                         raise exc
                 await wait_a_bit()
             except Exception as e:
-                if ('try again in 30 seconds' in str(e) or 'please verify after 1 minutes' in str(e) or
-                        'Message: "None": Status = 200' in str(e)):
+                s_e = str(e)
+                if ('try again in 30 seconds' in s_e or 'please verify after 1 minutes' in s_e or
+                        ('Message: "None": Status = 200' in s_e and
+                         'Galxe Web3 Score - Humanity Score' not in credential["name"])):
+                    print(f'im here |{s_e}|')
                     try_again = True
                 await log_long_exc(self.idx, f'Failed to complete "{credential["name"]}"', e, warning=True)
         return try_again
@@ -498,7 +481,7 @@ class GalxeAccount:
                 await self.add_typed_credential(campaign_id, credential)
                 return True
             case CredSource.CSV:
-                raise Exception(f'{self.idx}) CSV cred source for EVM task is not supported yet')
+                raise Exception(f'{self.idx}) It seems like you are not eligible for custom project requirements')
         logger.warning(f'{self.idx}) {credential["name"]} is not done or not updated yet. Trying to verify it anyway')
         return True
 
@@ -597,14 +580,12 @@ class GalxeAccount:
         logger.success(f'{self.idx}) "{survey_name}" submitted')
 
     @captcha_retry
-    @async_retry
     async def add_typed_credential(self, campaign_id: str, credential):
         captcha = await self.get_captcha()
         await self.client.add_typed_credential_items(campaign_id, credential['id'], captcha)
         await wait_a_bit(3)
 
     @captcha_retry
-    @async_retry
     async def _sync_credential(self, campaign_id: str, credential_id: str, cred_type: str):
         sync_options = self._default_sync_options(credential_id)
         match cred_type:
@@ -662,7 +643,7 @@ class GalxeAccount:
                 return self._campaign_points_claimed(campaign)
             case Gamification.OAT | Gamification.DROP:
                 return self._campaign_points_claimed(campaign) and self._campaign_nft_claimed(campaign)
-            case Gamification.POINTS_MYSTERY_BOX:
+            case Gamification.POINTS_MYSTERY_BOX | Gamification.BOUNTY:
                 return self._campaign_nft_claimed(campaign)
             case unexpected:
                 if HIDE_UNSUPPORTED:
@@ -677,8 +658,10 @@ class GalxeAccount:
         if self.already_claimed(campaign):
             nft_cnt = self.account.nfts.get(campaign["id"])
             nft_info = f' and {plural_str(nft_cnt, "NFT")}' if nft_cnt is not None else ''
+            bounty_info = ' and participated in bounty' if self._get_gamification_type(campaign) == Gamification.BOUNTY \
+                else ''
             logger.info(f'{self.idx}) {campaign["name"]} already claimed '
-                        f'{self.account.points[campaign["id"]][1]} points{nft_info}')
+                        f'{self.account.points[campaign["id"]][1]} points{nft_info}{bounty_info}')
             return
         logger.info(f'{self.idx}) Starting claim {campaign["name"]}')
         claimable = False
@@ -745,6 +728,8 @@ class GalxeAccount:
                     await self._claim_gas_reward(campaign, claim_data)
                 claimed_nfts = len(claim_data['mintFuncInfo']['verifyIDs'])
                 claimed_log = plural_str(claimed_nfts, nft_type)
+            case Gamification.BOUNTY:
+                claimed_log = '[Participated in Bounty]'
 
             case unexpected:
                 raise Exception(f'{unexpected} reward type is not supported for claim yet')
@@ -766,7 +751,6 @@ class GalxeAccount:
         return None
 
     @captcha_retry
-    @async_retry
     async def _get_claim_data(self, campaign):
         chain = campaign['chain']
         if chain == 'APTOS':

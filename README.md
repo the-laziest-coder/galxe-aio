@@ -25,6 +25,7 @@
  - Mystery Boxes
  - Gas-less OATs
  - Gas OATs and NFTs
+ - Participate in raffles
 
 ### Follow: https://t.me/thelaziestcoder
 

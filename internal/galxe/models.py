@@ -40,6 +40,7 @@ class Gamification(StrEnum):
     OAT = 'Oat'
     POINTS_MYSTERY_BOX = 'PointsMysteryBox'
     DROP = 'Drop'
+    BOUNTY = 'Bounty'
 
 
 class GasType(StrEnum):

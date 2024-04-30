@@ -9,7 +9,7 @@ from datetime import datetime
 from aiohttp_socks import ProxyConnector
 from urllib.parse import urlparse, parse_qs
 
-from ..config import MAX_TRIES
+from ..config import MAX_TRIES, DISABLE_SSL
 
 from .async_web3 import AsyncHTTPProviderWithUA
 
@@ -112,4 +112,6 @@ def to_bytes(hex_str):
 def get_w3(rpc_url: str, proxy: str = None):
     proxy = get_proxy_url(proxy)
     req_kwargs = {} if proxy is None else {'proxy': proxy}
+    if DISABLE_SSL:
+        req_kwargs['ssl'] = False
     return AsyncWeb3(AsyncHTTPProviderWithUA(rpc_url, req_kwargs))
