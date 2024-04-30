@@ -26,6 +26,7 @@
  - Gas-less OATs
  - Gas OATs and NFTs
  - Participate in raffles
+ - Discord Roles
 
 ### Follow: https://t.me/thelaziestcoder
 

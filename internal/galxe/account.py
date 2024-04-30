@@ -380,7 +380,6 @@ class GalxeAccount:
                 if ('try again in 30 seconds' in s_e or 'please verify after 1 minutes' in s_e or
                         ('Message: "None": Status = 200' in s_e and
                          'Galxe Web3 Score - Humanity Score' not in credential["name"])):
-                    print(f'im here |{s_e}|')
                     try_again = True
                 await log_long_exc(self.idx, f'Failed to complete "{credential["name"]}"', e, warning=True)
         return try_again
@@ -643,7 +642,7 @@ class GalxeAccount:
                 return self._campaign_points_claimed(campaign)
             case Gamification.OAT | Gamification.DROP:
                 return self._campaign_points_claimed(campaign) and self._campaign_nft_claimed(campaign)
-            case Gamification.POINTS_MYSTERY_BOX | Gamification.BOUNTY:
+            case Gamification.POINTS_MYSTERY_BOX | Gamification.BOUNTY | Gamification.DISCORD_ROLE:
                 return self._campaign_nft_claimed(campaign)
             case unexpected:
                 if HIDE_UNSUPPORTED:
@@ -658,10 +657,13 @@ class GalxeAccount:
         if self.already_claimed(campaign):
             nft_cnt = self.account.nfts.get(campaign["id"])
             nft_info = f' and {plural_str(nft_cnt, "NFT")}' if nft_cnt is not None else ''
-            bounty_info = ' and participated in bounty' if self._get_gamification_type(campaign) == Gamification.BOUNTY \
-                else ''
+            bounty_info, discord_role_info = '', ''
+            if self._get_gamification_type(campaign) == Gamification.BOUNTY:
+                bounty_info = ' and participated in bounty'
+            if self._get_gamification_type(campaign) == Gamification.DISCORD_ROLE:
+                discord_role_info = ' and discord role claimed'
             logger.info(f'{self.idx}) {campaign["name"]} already claimed '
-                        f'{self.account.points[campaign["id"]][1]} points{nft_info}{bounty_info}')
+                        f'{self.account.points[campaign["id"]][1]} points{nft_info}{bounty_info}{discord_role_info}')
             return
         logger.info(f'{self.idx}) Starting claim {campaign["name"]}')
         claimable = False
@@ -730,7 +732,8 @@ class GalxeAccount:
                 claimed_log = plural_str(claimed_nfts, nft_type)
             case Gamification.BOUNTY:
                 claimed_log = '[Participated in Bounty]'
-
+            case Gamification.DISCORD_ROLE:
+                claimed_log = '[Discord Role]'
             case unexpected:
                 raise Exception(f'{unexpected} reward type is not supported for claim yet')
 

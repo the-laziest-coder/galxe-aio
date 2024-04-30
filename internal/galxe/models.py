@@ -41,6 +41,7 @@ class Gamification(StrEnum):
     POINTS_MYSTERY_BOX = 'PointsMysteryBox'
     DROP = 'Drop'
     BOUNTY = 'Bounty'
+    DISCORD_ROLE = 'DiscordRole'
 
 
 class GasType(StrEnum):
