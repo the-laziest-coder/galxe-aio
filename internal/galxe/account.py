@@ -726,7 +726,16 @@ class GalxeAccount:
                     claimed_log += ' from Mystery Box'
             case Gamification.OAT | Gamification.DROP:
                 nft_type = 'NFT' if reward_type == Gamification.DROP else 'OAT'
-                if campaign['gasType'] == GasType.GAS:
+                gas_less = campaign['gasType'] == GasType.GAS_LESS
+                if gas_less:
+                    sufficient = await self.client.sufficient_for_gasless_chain_query(
+                        int(campaign['space']['id']),
+                        campaign['chain'],
+                    )
+                    if not sufficient:
+                        logger.info(f'{self.idx}) Insufficient space balance for gasless claim')
+                        gas_less = False
+                if not gas_less:
                     await self._claim_gas_reward(campaign, claim_data)
                 claimed_nfts = len(claim_data['mintFuncInfo']['verifyIDs'])
                 claimed_log = plural_str(claimed_nfts, nft_type)

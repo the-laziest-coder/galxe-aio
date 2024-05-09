@@ -405,3 +405,17 @@ class Client(TLSClient):
         if cursor:
             body['variables']['cursorAfter'] = cursor
         return await self.api_request(body, lambda r: r['data']['addressInfo']['loyaltyPointsRanks'])
+
+    async def sufficient_for_gasless_chain_query(self, space_id: int, chain: str):
+        body = {
+            'operationName': 'SufficientForGaslessChainQuery',
+            'query': 'query SufficientForGaslessChainQuery($id: Int, $chains: [Chain!]!) {\n  space(id: $id) {\n    id\n    spaceBalance {\n      sufficientForGaslessClaimOnChain(chains: $chains) {\n        sufficient\n        chain\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}\n',
+            'variables': {
+                'chains': [chain],
+                'id': space_id,
+            },
+        }
+        return await self.api_request(
+            body,
+            lambda r: r['data']['space']['spaceBalance']['sufficientForGaslessClaimOnChain'][0]['sufficient']
+        )
