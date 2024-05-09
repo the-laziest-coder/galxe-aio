@@ -2,6 +2,7 @@ import asyncio
 from loguru import logger
 from web3 import Web3
 from web3.exceptions import TransactionNotFound
+from web3.middleware import async_geth_poa_middleware
 from web3.contract.async_contract import AsyncContractConstructor
 
 from ..models import AccountInfo
@@ -83,7 +84,14 @@ class OnchainAccount:
         raise Exception(msg)
 
     async def build_and_send_tx(self, func: AsyncContractConstructor, action='', **tx_vars) -> str:
-        tx_hash = await self._build_and_send_tx(func, **tx_vars)
+        try:
+            tx_hash = await self._build_and_send_tx(func, **tx_vars)
+        except Exception as e:
+            if 'you are connected to a POA chain' in str(e):
+                self.w3.middleware_onion.inject(async_geth_poa_middleware, layer=0)
+                tx_hash = await self._build_and_send_tx(func, **tx_vars)
+            else:
+                raise e
         await self._tx_verification(tx_hash, action)
         return tx_hash.hex()
 

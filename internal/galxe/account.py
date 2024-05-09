@@ -727,6 +727,7 @@ class GalxeAccount:
             case Gamification.OAT | Gamification.DROP:
                 nft_type = 'NFT' if reward_type == Gamification.DROP else 'OAT'
                 gas_less = campaign['gasType'] == GasType.GAS_LESS
+                was_gasless = False
                 if gas_less:
                     sufficient = await self.client.sufficient_for_gasless_chain_query(
                         int(campaign['space']['id']),
@@ -734,9 +735,9 @@ class GalxeAccount:
                     )
                     if not sufficient:
                         logger.info(f'{self.idx}) Insufficient space balance for gasless claim')
-                        gas_less = False
+                        gas_less, was_gasless = False, True
                 if not gas_less:
-                    await self._claim_gas_reward(campaign, claim_data)
+                    await self._claim_gas_reward(campaign, claim_data, was_gasless)
                 claimed_nfts = len(claim_data['mintFuncInfo']['verifyIDs'])
                 claimed_log = plural_str(claimed_nfts, nft_type)
             case Gamification.BOUNTY:
@@ -771,9 +772,11 @@ class GalxeAccount:
         return await self.client.prepare_participate(campaign['id'], captcha, chain,
                                                      referral_code=self.get_referral_code(campaign))
 
-    async def _claim_gas_reward(self, campaign, claim_data):
+    async def _claim_gas_reward(self, campaign, claim_data, was_gasless=False):
         space_station = campaign['spaceStation']
         space_station_address, space_chain = space_station['address'], space_station['chain']
+        if was_gasless:
+            space_chain = campaign['chain']
         chain = CHAIN_NAME_MAPPING.get(space_chain, space_chain.capitalize())
         number_id = campaign['numberID']
 
