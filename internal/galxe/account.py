@@ -454,8 +454,7 @@ class GalxeAccount:
         return True
 
     async def _complete_email(self, campaign_id: str, credential) -> bool:
-        if FORCE_LINK_EMAIL:
-            await self.link_email()
+        await self.link_email()
         match credential['credSource']:
             case CredSource.VISIT_LINK:
                 await self.add_typed_credential(campaign_id, credential)
@@ -533,7 +532,7 @@ class GalxeAccount:
             quizzes = await self.client.read_quiz(quiz_id)
 
             if any(q['type'] != QuizType.MULTI_CHOICE for q in quizzes):
-                raise Exception(f"Can't solve quiz with not multi-choice items")
+                raise Exception(f"Can't solve quiz with not multi-choice items: {quiz_id}")
 
             answers = [-1 for _ in quizzes]
             correct = [False for _ in quizzes]
