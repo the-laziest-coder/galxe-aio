@@ -641,7 +641,7 @@ class GalxeAccount:
                 return self._campaign_points_claimed(campaign)
             case Gamification.OAT | Gamification.DROP:
                 return self._campaign_points_claimed(campaign) and self._campaign_nft_claimed(campaign)
-            case Gamification.POINTS_MYSTERY_BOX | Gamification.BOUNTY | Gamification.DISCORD_ROLE:
+            case Gamification.POINTS_MYSTERY_BOX | Gamification.BOUNTY | Gamification.DISCORD_ROLE | Gamification.TOKEN:
                 return self._campaign_nft_claimed(campaign)
             case unexpected:
                 if HIDE_UNSUPPORTED:
@@ -656,13 +656,17 @@ class GalxeAccount:
         if self.already_claimed(campaign):
             nft_cnt = self.account.nfts.get(campaign["id"])
             nft_info = f' and {plural_str(nft_cnt, "NFT")}' if nft_cnt is not None else ''
-            bounty_info, discord_role_info = '', ''
-            if self._get_gamification_type(campaign) == Gamification.BOUNTY:
-                bounty_info = ' and participated in bounty'
-            if self._get_gamification_type(campaign) == Gamification.DISCORD_ROLE:
-                discord_role_info = ' and discord role claimed'
+            bounty_info, discord_role_info, raffle_info = '', '', ''
+            match self._get_gamification_type(campaign):
+                case Gamification.BOUNTY:
+                    bounty_info = ' and participated in bounty'
+                case Gamification.DISCORD_ROLE:
+                    discord_role_info = ' and discord role claimed'
+                case Gamification.TOKEN:
+                    raffle_info = ' and participated in raffle'
             logger.info(f'{self.idx}) {campaign["name"]} already claimed '
-                        f'{self.account.points[campaign["id"]][1]} points{nft_info}{bounty_info}{discord_role_info}')
+                        f'{self.account.points[campaign["id"]][1]} points'
+                        f'{nft_info}{bounty_info}{discord_role_info}{raffle_info}')
             return
         logger.info(f'{self.idx}) Starting claim {campaign["name"]}')
         claimable = False
@@ -743,6 +747,11 @@ class GalxeAccount:
                 claimed_log = '[Participated in Bounty]'
             case Gamification.DISCORD_ROLE:
                 claimed_log = '[Discord Role]'
+            case Gamification.TOKEN:
+                if campaign.get('distributionType') == 'RAFFLE':
+                    claimed_log = '[Participated in Raffle]'
+                else:
+                    raise Exception('Unexpected distribution type for token reward')
             case unexpected:
                 raise Exception(f'{unexpected} reward type is not supported for claim yet')
 

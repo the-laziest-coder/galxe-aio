@@ -42,6 +42,7 @@ class Gamification(StrEnum):
     DROP = 'Drop'
     BOUNTY = 'Bounty'
     DISCORD_ROLE = 'DiscordRole'
+    TOKEN = 'Token'
 
 
 class GasType(StrEnum):
