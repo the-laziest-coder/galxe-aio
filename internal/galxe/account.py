@@ -704,7 +704,11 @@ class GalxeAccount:
                 if not HIDE_UNSUPPORTED:
                     logger.warning(f'{self.idx}) {unexpected} condition relation is not supported yet')
         if not claimable:
-            not_claimable_msg = [c["name"] for c in cred_group["credentials"]] + [f"{left_points} points left"]
+            not_claimable_msg = ([('[+] ' if c['eligible'] == 1 else '[-] ') + c["name"]
+                                  for c in cred_group["credentials"]] +
+                                 [f"{left_points} points left"])
+            if len(not_claimable_msg) > 1:
+                not_claimable_msg[0] = ' ' + not_claimable_msg[0]
             not_claimable_msg = f'group#{cred_idx} [{" | ".join(not_claimable_msg)}]'
             not_claimable_msg = colored(f'Not enough conditions eligible to claim {not_claimable_msg}', 'cyan')
             logger.info(f'{self.idx}) ' + not_claimable_msg)

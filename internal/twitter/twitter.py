@@ -24,8 +24,8 @@ def _get_headers(info: AccountInfo) -> dict:
         'accept-language': 'en;q=0.9',
         'authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
         'content-type': 'application/json',
-        'origin': 'https://mobile.twitter.com',
-        'referer': 'https://mobile.twitter.com/',
+        'origin': 'https://mobile.x.com',
+        'referer': 'https://mobile.x.com/',
         'sec-ch-ua': SEC_CH_UA,
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': SEC_CH_UA_PLATFORM,
@@ -46,7 +46,7 @@ class Twitter:
         self.account = account_info
         self.cookies = {
             'auth_token': account_info.twitter_auth_token,
-            'ct0': '',
+            'ct0': self.account.twitter_ct0,
         }
         self.headers = _get_headers(account_info)
         self.proxy = get_proxy_url(account_info.proxy)
@@ -54,7 +54,10 @@ class Twitter:
         self.my_username = None
 
     async def start(self):
-        ct0 = await self._get_ct0()
+        ct0 = self.account.twitter_ct0
+        if ct0 == '':
+            ct0 = await self._get_ct0()
+            self.account.twitter_ct0 = ct0
         self.cookies.update({'ct0': ct0})
         self.headers.update({'x-csrf-token': ct0})
         self.my_username = await self.get_my_profile_info()
@@ -94,10 +97,10 @@ class Twitter:
             kwargs = {'ssl': False} if DISABLE_SSL else {}
             async with aiohttp.ClientSession(connector=get_conn(self.proxy),
                                              headers=self.headers, cookies=self.cookies) as sess:
-                async with sess.get('https://twitter.com/i/api/1.1/dm/user_updates.json?', **kwargs) as resp:
+                async with sess.get('https://api.x.com/1.1/account/settings.json', **kwargs) as resp:
                     new_csrf = resp.cookies.get("ct0")
                     if new_csrf is None:
-                        raise Exception('Empty new csrf')
+                        raise Exception('Empty new csrf. Probably bad auth token')
                     new_csrf = new_csrf.value
                     return new_csrf
         except Exception as e:
@@ -106,7 +109,7 @@ class Twitter:
             raise Exception(f'Failed to get ct0 for twitter: {reason}{str(e)}')
 
     async def get_my_profile_info(self):
-        url = 'https://api.twitter.com/1.1/account/settings.json'
+        url = 'https://api.x.com/1.1/account/settings.json'
         params = {
             'include_mention_filter': 'true',
             'include_nsfw_user_flag': 'true',
@@ -124,7 +127,7 @@ class Twitter:
             raise Exception(f'Get my username error: {str(e)}')
 
     async def get_followers_count(self, username):
-        url = 'https://twitter.com/i/api/graphql/G3KGOASz96M-Qu0nwmGXNg/UserByScreenName'
+        url = 'https://x.com/i/api/graphql/G3KGOASz96M-Qu0nwmGXNg/UserByScreenName'
         params = {
             'variables': to_json({"screen_name": username, "withSafetyModeUserFields": True}),
             'features': to_json({
@@ -150,7 +153,7 @@ class Twitter:
             raise Exception(f'Get followers count error: {str(e)}')
 
     async def get_user_id(self, username):
-        url = 'https://twitter.com/i/api/graphql/9zwVLJ48lmVUk8u_Gh9DmA/ProfileSpotlightsQuery'
+        url = 'https://x.com/i/api/graphql/9zwVLJ48lmVUk8u_Gh9DmA/ProfileSpotlightsQuery'
         if username[0] == '@':
             username = username[1:]
         username = username.lower()
@@ -167,7 +170,7 @@ class Twitter:
 
     async def follow(self, username):
         user_id = await self.get_user_id(username)
-        url = 'https://twitter.com/i/api/1.1/friendships/create.json'
+        url = 'https://x.com/i/api/1.1/friendships/create.json'
         params = {
             'include_profile_interstitial_type': '1',
             'include_blocking': '1',
@@ -194,7 +197,7 @@ class Twitter:
 
     async def post_tweet(self, text, tweet_id=None) -> str:
         action = "CreateTweet"
-        query_id = "GUFG748vuvmewdXbB5uPKg"
+        query_id = "oB-5XsHNAbjvARJEc8CZFw"
         _json = dict(
             variables=dict(
                 tweet_text=text,
@@ -231,7 +234,7 @@ class Twitter:
                 exclude_reply_user_ids=[]
             )
 
-        url = f'https://twitter.com/i/api/graphql/{query_id}/{action}'
+        url = f'https://x.com/i/api/graphql/{query_id}/{action}'
 
         def _handler(resp):
             _result = resp['data']['create_tweet']['tweet_results']['result']
@@ -248,7 +251,7 @@ class Twitter:
     async def retweet(self, tweet_id):
         action = 'CreateRetweet'
         query_id = 'ojPdsZsimiJrUGLR1sjUtA'
-        url = f'https://twitter.com/i/api/graphql/{query_id}/{action}'
+        url = f'https://x.com/i/api/graphql/{query_id}/{action}'
         _json = {
             'variables': {
                 'tweet_id': tweet_id,
@@ -264,7 +267,7 @@ class Twitter:
     async def like(self, tweet_id) -> bool:
         action = 'FavoriteTweet'
         query_id = 'lI07N6Otwv1PhnEgXILM7A'
-        url = f'https://twitter.com/i/api/graphql/{query_id}/{action}'
+        url = f'https://x.com/i/api/graphql/{query_id}/{action}'
         _json = {
             'variables': {
                 'tweet_id': tweet_id,
@@ -317,7 +320,7 @@ class Twitter:
             }),
         }
 
-        url = f'https://twitter.com/i/api/graphql/{query_id}/{action}'
+        url = f'https://x.com/i/api/graphql/{query_id}/{action}'
 
         def _handler(resp):
             instructions = resp['data']['user']['result']['timeline_v2']['timeline']['instructions']

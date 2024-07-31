@@ -1,7 +1,7 @@
 WAIT_BETWEEN_ACCOUNTS = [0, 0]
 MAX_TRIES = 2
 
-CAP_MONSTER_API_KEY = ""
+# Only one of this needed
 TWO_CAPTCHA_API_KEY = ""
 CAP_SOLVER_API_KEY = ""
 

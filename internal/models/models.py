@@ -21,6 +21,7 @@ class AccountInfo:
     evm_private_key: str = ''
     proxy: str = ''
     twitter_auth_token: str = ''
+    twitter_ct0: str = ''
     email_username: str = ''
     email_password: str = ''
     discord_token: str = ''

@@ -124,6 +124,15 @@ async def _solve_captcha(api_url, client_key,
             **additional_task_properties,
         },
     }
+
+    ref_name, ref_value = None, None
+    if api_url == CAP_SOLVER_API_URL:
+        ref_name, ref_value = 'appId', '373E3CAC-2E7E-4748-B107-908AC039873D'
+    elif api_url == TWO_CAPTCHA_API_URL:
+        ref_name, ref_value = 'softId', 4669
+    if ref_name is not None:
+        create_task_req[ref_name] = ref_value
+
     if site_key:
         create_task_req['task']['websiteKey'] = site_key
     proxy = get_proxy_url(proxy)
