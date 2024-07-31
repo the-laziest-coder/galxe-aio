@@ -478,6 +478,9 @@ class GalxeAccount:
             case CredSource.VISIT_LINK:
                 await self.add_typed_credential(campaign_id, credential)
                 return True
+            case CredSource.QUIZ:
+                await self.solve_quiz(credential)
+                return False
             case CredSource.CSV:
                 raise Exception(f'{self.idx}) It seems like you are not eligible for custom project requirements')
         logger.warning(f'{self.idx}) {credential["name"]} is not done or not updated yet. Trying to verify it anyway')
