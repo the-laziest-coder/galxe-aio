@@ -524,7 +524,7 @@ class GalxeAccount:
 
     def _default_sync_options(self, credential_id: str):
         return {
-            'address': self.client.address,
+            'address': self.client.full_address,
             'credId': credential_id,
         }
 

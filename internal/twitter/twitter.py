@@ -24,8 +24,8 @@ def _get_headers(info: AccountInfo) -> dict:
         'accept-language': 'en;q=0.9',
         'authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
         'content-type': 'application/json',
-        'origin': 'https://mobile.x.com',
-        'referer': 'https://mobile.x.com/',
+        'origin': 'https://x.com',
+        'referer': 'https://x.com/',
         'sec-ch-ua': SEC_CH_UA,
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': SEC_CH_UA_PLATFORM,
@@ -107,6 +107,19 @@ class Twitter:
             reason = 'Your account has been locked\n' if 'Your account has been locked' in str(e) else ''
             self.account.twitter_error = True
             raise Exception(f'Failed to get ct0 for twitter: {reason}{str(e)}')
+
+    def check_response_errors(self, resp):
+        if type(resp) is not dict:
+            return
+        errors = resp.get('errors', [])
+        if type(errors) is not list:
+            return
+        if len(errors) == 0:
+            return
+        error_msg = ' | '.join([msg for msg in [err.get('message') for err in errors if type(err) is dict] if msg])
+        if len(error_msg) == 0:
+            return
+        raise Exception(error_msg)
 
     async def get_my_profile_info(self):
         url = 'https://api.x.com/1.1/account/settings.json'
@@ -209,24 +222,32 @@ class Twitter:
                 dark_request=False
             ),
             features=dict(
-                freedom_of_speech_not_reach_fetch_enabled=True,
-                graphql_is_translatable_rweb_tweet_is_translatable_enabled=True,
-                longform_notetweets_consumption_enabled=True,
-                longform_notetweets_inline_media_enabled=True,
-                longform_notetweets_rich_text_read_enabled=True,
+                communities_web_enable_tweet_community_results_fetch=True,
+                c9s_tweet_anatomy_moderator_badge_enabled=True,
+                tweetypie_unmention_optimization_enabled=True,
                 responsive_web_edit_tweet_api_enabled=True,
-                responsive_web_enhance_cards_enabled=False,
+                graphql_is_translatable_rweb_tweet_is_translatable_enabled=True,
+                view_counts_everywhere_api_enabled=True,
+                longform_notetweets_consumption_enabled=True,
+                responsive_web_twitter_article_tweet_consumption_enabled=True,
+                tweet_awards_web_tipping_enabled=False,
+                creator_subscriptions_quote_tweet_preview_enabled=False,
+                longform_notetweets_rich_text_read_enabled=True,
+                longform_notetweets_inline_media_enabled=True,
+                articles_preview_enabled=True,
+                rweb_video_timestamps_enabled=True,
+                rweb_tipjar_consumption_enabled=True,
                 responsive_web_graphql_exclude_directive_enabled=True,
+                verified_phone_label_enabled=False,
+                freedom_of_speech_not_reach_fetch_enabled=True,
+                standardized_nudges_misinfo=True,
+                tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled=True,
                 responsive_web_graphql_skip_user_profile_image_extensions_enabled=False,
                 responsive_web_graphql_timeline_navigation_enabled=True,
-                standardized_nudges_misinfo=True,
-                tweet_awards_web_tipping_enabled=False,
-                tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled=False,
-                tweetypie_unmention_optimization_enabled=True,
-                verified_phone_label_enabled=False,
-                view_counts_everywhere_api_enabled=True
+                responsive_web_enhance_cards_enabled=False,
             ),
-            queryId=query_id)
+            queryId=query_id,
+        )
 
         if tweet_id:
             _json['variables']['reply'] = dict(
@@ -260,7 +281,9 @@ class Twitter:
             'queryId': query_id
         }
         try:
-            return await self.request('POST', url, json=_json, resp_handler=lambda r: r)
+            resp = await self.request('POST', url, json=_json, resp_handler=lambda r: r)
+            self.check_response_errors(resp)
+            return resp
         except Exception as e:
             raise Exception(f'Retweet error: {str(e)}')
 
@@ -285,7 +308,7 @@ class Twitter:
 
     async def find_posted_tweet(self, text_condition_func, count=20) -> str:
         action = "UserTweets"
-        query_id = "QWF3SzpHmykQHsQMixG0cg"
+        query_id = "V1ze5q3ijDS1VeLwLY0m7g"
         params = {
             'variables': to_json({
                 "userId": self.my_user_id,
