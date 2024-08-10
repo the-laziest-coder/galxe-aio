@@ -575,7 +575,9 @@ class GalxeAccount:
 
         questions = await self.client.read_survey(survey_id)
 
-        answers = SURVEYS.get(self.account.evm_address.lower(), {}).get(campaign_id, '')
+        answers = SURVEYS.get(self.account.evm_address.lower(), {}).get(campaign_id)
+        if answers is None:
+            answers = SURVEYS.get('all', {}).get(campaign_id, [])
         answers = [a.strip() for a in answers.split('|')] if answers else []
 
         if UPLOAD_RANDOM_PHOTOS:
@@ -592,7 +594,7 @@ class GalxeAccount:
             logger.warning(f'{self.idx}) Expected {len(questions)} answers, but only {len(answers)} provided')
             return False
 
-        answers = [(await self._get_random_tweet_url()) if a == '{RANDOM_TWEET_URL}' else a for a in answers]
+        answers = [(await self.replace_survey_answer_if_needed(a)) for a in answers]
 
         sync_options = self._default_sync_options(survey_id)
         logger.info(f'{self.idx}) Sending answers: {answers}')
@@ -600,8 +602,34 @@ class GalxeAccount:
         await self.client.sync_credential_value(sync_options, only_allow=False)
         logger.success(f'{self.idx}) "{survey_name}" submitted')
 
+    async def replace_survey_answer_if_needed(self, answer):
+        match answer:
+            case '{RANDOM_TWEET_URL}':
+                return await self._get_random_tweet_url()
+            case '{RANDOM_DRIVE_URL}':
+                return self._get_random_drive_url()
+            case '{RANDOM_DISCORD_MSG_URL}':
+                return self._get_random_discord_msg_url()
+            case '{RANDOM_TEXT}':
+                return ''.join(random.choice(string.ascii_letters) for _ in range(random.randint(5, 30)))
+            case _:
+                return answer
+
+    @classmethod
+    async def _get_random_discord_msg_url(cls):
+        id1 = random.randint(1005543323800410604, 1005583329803498664)
+        id2 = id1 + random.randint(20902400016, 87949465516)
+        id3 = random.randint(1261000076014841918, 1269925976014841918)
+        return f'https://discord.com/channels/{id1}/{id2}/{id3}'
+
+    @classmethod
+    async def _get_random_drive_url(cls):
+        alp = string.ascii_letters + string.digits + '-_'
+        folder_id = ''.join(random.choice(alp) for _ in range(33))
+        return f'https://drive.google.com/drive/folders/{folder_id}?usp=sharing'
+
     async def _get_random_tweet_url(self):
-        username = await self.fake_username()
+        username = self.twitter.my_username if self.twitter else await self.fake_username()
         tweet_id = random.randint(1821005685521723567, 182135685521723567)
         return f'https://x.com/{username}/status/{tweet_id}'
 
