@@ -1,5 +1,5 @@
 aiofiles==23.2.1
-aiohttp==3.9.4
+aiohttp==3.10.2
 aiohttp_socks==0.8.4
 aioimaplib==1.0.1
 colorama==0.4.6
