@@ -3,7 +3,7 @@ aiohttp==3.9.4
 aiohttp_socks==0.8.4
 aioimaplib==1.0.1
 colorama==0.4.6
-curl_cffi==0.6.0b7
+curl_cffi==0.7.1
 dataclasses_json==0.6.3
 eth_account==0.10.0
 Faker==22.6.0

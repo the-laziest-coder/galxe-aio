@@ -1,9 +1,12 @@
+import io
 import re
 import time
 import json
 import random
 import base64
+import string
 import asyncio
+import aiohttp
 import colorama
 from uuid import uuid4
 from faker import Faker
@@ -19,13 +22,13 @@ from ..storage import Storage
 from ..twitter import Twitter
 from ..onchain import OnchainAccount
 from ..captcha import solve_geetest
-from ..config import FAKE_TWITTER, HIDE_UNSUPPORTED, MAX_TRIES, FORCE_LINK_EMAIL, REFERRAL_LINKS, SURVEYS
-from ..utils import wait_a_bit, get_query_param, get_proxy_url, async_retry, log_long_exc, plural_str
+from ..config import FAKE_TWITTER, HIDE_UNSUPPORTED, MAX_TRIES, FORCE_LINK_EMAIL, REFERRAL_LINKS, SURVEYS, UPLOAD_RANDOM_PHOTOS, DISABLE_SSL
+from ..utils import wait_a_bit, get_query_param, get_proxy_url, async_retry, log_long_exc, plural_str, get_conn
 
 from .client import Client
 from .fingerprint import fingerprints, captcha_retry
 from .utils import random_string_for_entropy
-from .models import Recurring, Credential, CredSource, ConditionRelation, QuizType, Gamification, GasType
+from .models import Recurring, Credential, CredSource, ConditionRelation, QuizType, SurveyType, Gamification, GasType
 from .constants import DISCORD_AUTH_URL, GALXE_DISCORD_CLIENT_ID, CHAIN_NAME_MAPPING, VERIFY_TRIES
 
 colorama.init()
@@ -53,6 +56,8 @@ class GalxeAccount:
 
     async def close(self):
         await self.client.close()
+        if self.twitter:
+            await self.twitter.close()
 
     async def __aenter__(self) -> "GalxeAccount":
         return self
@@ -442,8 +447,7 @@ class GalxeAccount:
                         mentions_number = int(mentions[0].split()[1])
                         text += ''.join([f' @{await self.fake_username()}' for _ in range(mentions_number)])
                     logger.info(f'{self.idx}) Tweet quote with text: {text}')
-                    text += '\n' + tweet_link
-                    await self.twitter.post_tweet(text)
+                    await self.twitter.quote(tweet_link, text)
                 case unexpected:
                     if HIDE_UNSUPPORTED:
                         return False
@@ -480,6 +484,9 @@ class GalxeAccount:
                 return True
             case CredSource.QUIZ:
                 await self.solve_quiz(credential)
+                return False
+            case CredSource.SURVEY:
+                await self._complete_survey(campaign_id, credential)
                 return False
             case CredSource.CSV:
                 raise Exception(f'{self.idx}) It seems like you are not eligible for custom project requirements')
@@ -565,20 +572,92 @@ class GalxeAccount:
         survey_id = survey['id']
         survey_name = survey['name']
         logger.info(f'{self.idx}) Processing survey "{survey_name}"')
+
         questions = await self.client.read_survey(survey_id)
-        answers = SURVEYS.get(self.account.evm_address.lower(), {}).get(campaign_id)
-        if not answers:
-            logger.warning(f'{self.idx}) No answers provided for {self.account.evm_address}')
-            return False
-        answers = [a.strip() for a in answers.split('|')]
+
+        answers = SURVEYS.get(self.account.evm_address.lower(), {}).get(campaign_id, '')
+        answers = [a.strip() for a in answers.split('|')] if answers else []
+
+        if UPLOAD_RANDOM_PHOTOS:
+            for idx, q in enumerate(questions):
+                if q['type'] != SurveyType.UPLOAD_FILE:
+                    continue
+                uploaded_url = await self.upload_file(await self._get_random_photo_content(), {
+                    'space-alias': 'survey',
+                    'credId': survey_id,
+                })
+                answers.insert(idx, uploaded_url)
+
         if len(answers) != len(questions):
             logger.warning(f'{self.idx}) Expected {len(questions)} answers, but only {len(answers)} provided')
             return False
+
+        answers = [(await self._get_random_tweet_url()) if a == '{RANDOM_TWEET_URL}' else a for a in answers]
+
         sync_options = self._default_sync_options(survey_id)
         logger.info(f'{self.idx}) Sending answers: {answers}')
         sync_options.update({'survey': {'answers': answers}})
         await self.client.sync_credential_value(sync_options, only_allow=False)
         logger.success(f'{self.idx}) "{survey_name}" submitted')
+
+    async def _get_random_tweet_url(self):
+        username = await self.fake_username()
+        tweet_id = random.randint(1821005685521723567, 182135685521723567)
+        return f'https://x.com/{username}/status/{tweet_id}'
+
+    def _get_aiohttp_kwargs(self):
+        return {'connector': get_conn(self.proxy)}, {'ssl': not DISABLE_SSL}
+
+    @async_retry
+    async def _get_random_photo_content(self):
+        img_szs = [i for i in range(500, 1001, 50)]
+        url = f'https://picsum.photos/{random.choice(img_szs)}/{random.choice(img_szs)}'
+        sess_kwargs, req_kwargs = self._get_aiohttp_kwargs()
+        try:
+            async with aiohttp.ClientSession(**sess_kwargs) as sess:
+                async with sess.get(url, timeout=60, **req_kwargs) as resp:
+                    if resp.status != 200:
+                        raise Exception(f'Bad status_code = {resp.status}, response = {await resp.text()}')
+                    return await resp.read()
+        except Exception as e:
+            raise Exception(f'Get random photo content failed: {e}')
+
+    @async_retry
+    async def upload_file(self, media_data, other_data: dict = None) -> str:
+        other_data = other_data or {}
+
+        timestamp = (datetime.now() - timedelta(minutes=random.randint(1, 5))).strftime("%Y-%m-%d at %H.%M.%S")
+        filename = f'Screenshot {timestamp}.jpeg'
+        boundary = '------WebKitFormBoundary' + ''.join(random.sample(string.ascii_letters + string.digits, 16))
+
+        with aiohttp.MultipartWriter(boundary=boundary) as multipart:
+            try:
+                media_part = multipart.append(io.BytesIO(media_data))
+                media_part.set_content_disposition('form-data', name='media', filename=filename)
+                media_part.headers['Content-Type'] = 'image/jpeg'
+
+                for name, value in other_data.items():
+                    add_part = multipart.append(value)
+                    add_part.set_content_disposition('form-data', name=name)
+
+                headers = {
+                    'Content-Type': f'multipart/form-data; boundary={boundary}',
+                }
+                sess_kwargs, req_kwargs = self._get_aiohttp_kwargs()
+                async with aiohttp.ClientSession(**sess_kwargs) as sess:
+                    async with sess.post('https://api.galxe.com/v1/media/survey/upload', data=multipart, headers=headers, timeout=60, **req_kwargs) as resp:
+                        if resp.status != 200:
+                            raise Exception(f'Bad status_code = {resp.status}, response = {await resp.text()}')
+                        try:
+                            result = await resp.json()
+                            if result['message'] != 'Your file has been successfully uploaded':
+                                raise Exception(result['message'])
+                            return result['url']
+                        except Exception as e:
+                            raise Exception(f'Bad response: {e}')
+            except Exception as e:
+                raise Exception(f'Upload file failed: {e}')
+
 
     @captcha_retry
     async def add_typed_credential(self, campaign_id: str, credential):

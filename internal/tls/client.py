@@ -30,6 +30,7 @@ class TLSClient:
     def __init__(self, account: AccountInfo, custom_headers: dict = None, custom_cookies: dict = None):
         self.account = account
         self._headers = {}
+        self._cookies = {}
         self.proxy = get_proxy_url(self.account.proxy)
         self.proxies = {'http': self.proxy, 'https': self.proxy} if self.proxy else {}
         headers = get_default_headers()
@@ -39,11 +40,11 @@ class TLSClient:
             proxies=self.proxies,
             headers=headers,
             cookies=custom_cookies,
-            impersonate=BrowserType.chrome120
+            impersonate=BrowserType.chrome124
         )
 
     async def close(self):
-        self.sess.close()
+        await self.sess.close()
 
     @classmethod
     def _handle_response(cls, resp_raw, acceptable_statuses=None, resp_handler=None, with_text=False):
@@ -63,12 +64,12 @@ class TLSClient:
         self._headers.update(new_headers)
 
     @async_retry
-    async def _raw_request(self, method, url, headers, **kwargs):
-        match method:
-            case 'GET':
-                resp = await self.sess.get(url, headers=headers, **kwargs)
-            case 'POST':
-                resp = await self.sess.post(url, headers=headers, **kwargs)
+    async def _raw_request(self, method, url, headers, cookies, **kwargs):
+        match method.lower():
+            case 'get':
+                resp = await self.sess.get(url, headers=headers, cookies=cookies, **kwargs)
+            case 'post':
+                resp = await self.sess.post(url, headers=headers, cookies=cookies, **kwargs)
             case unexpected:
                 raise Exception(f'Wrong request method: {unexpected}')
         return resp
@@ -77,11 +78,21 @@ class TLSClient:
         headers = self._headers.copy()
         if 'headers' in kwargs:
             headers.update(kwargs.pop('headers'))
+        for name in [name for name, value in headers.items() if value is None]:
+            headers.pop(name)
+
+        cookies = self._cookies.copy()
+        if 'cookies' in kwargs:
+            cookies.update(kwargs.pop('cookies'))
+        for name in [name for name, value in cookies.items() if value is None]:
+            cookies.pop(name)
+
         if 'timeout' not in kwargs:
             kwargs.update({'timeout': 60})
         if DISABLE_SSL:
             kwargs.update({'verify': False})
-        resp = await self._raw_request(method, url, headers, **kwargs)
+
+        resp = await self._raw_request(method, url, headers, cookies, **kwargs)
         return self._handle_response(resp, acceptable_statuses, resp_handler, with_text)
 
     async def get(self, url, acceptable_statuses=None, resp_handler=None, with_text=False, **kwargs):

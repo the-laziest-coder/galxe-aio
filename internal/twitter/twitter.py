@@ -3,6 +3,7 @@ import json
 import binascii
 import aiohttp
 
+from ..tls import TLSClient
 from ..models import AccountInfo
 from ..utils import get_proxy_url, handle_aio_response, async_retry, get_conn
 from ..config import DISABLE_SSL
@@ -14,29 +15,16 @@ def generate_csrf_token(size=16):
     return binascii.hexlify(data).decode()
 
 
-def _get_headers(info: AccountInfo) -> dict:
-    # if is_empty(info.user_agent):
-    #     info.user_agent = USER_AGENT
-    #     info.sec_ch_ua = SEC_CH_UA
-    #     info.sec_ch_ua_platform = SEC_CH_UA_PLATFORM
+def _get_headers() -> dict:
     return {
-        'accept': '*/*',
-        'accept-language': 'en;q=0.9',
         'authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
-        'content-type': 'application/json',
         'origin': 'https://x.com',
         'referer': 'https://x.com/',
-        'sec-ch-ua': SEC_CH_UA,
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': SEC_CH_UA_PLATFORM,
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
         'sec-fetch-site': 'same-origin',
         'x-twitter-active-user': 'yes',
         'x-twitter-auth-type': 'OAuth2Session',
         'x-twitter-client-language': 'en',
         'x-csrf-token': '',
-        'user-agent': USER_AGENT,
     }
 
 
@@ -44,12 +32,12 @@ class Twitter:
 
     def __init__(self, account_info: AccountInfo):
         self.account = account_info
-        self.cookies = {
+        _cookies = {
             'auth_token': account_info.twitter_auth_token,
-            'ct0': self.account.twitter_ct0,
         }
-        self.headers = _get_headers(account_info)
-        self.proxy = get_proxy_url(account_info.proxy)
+        if self.account.twitter_ct0 != '':
+            _cookies['ct0'] = self.account.twitter_ct0
+        self.tls_client = TLSClient(account_info, _get_headers(), _cookies)
         self.my_user_id = None
         self.my_username = None
 
@@ -58,51 +46,24 @@ class Twitter:
         if ct0 == '':
             ct0 = await self._get_ct0()
             self.account.twitter_ct0 = ct0
-        self.cookies.update({'ct0': ct0})
-        self.headers.update({'x-csrf-token': ct0})
+        self.tls_client.update_headers({'x-csrf-token': ct0})
         self.my_username = await self.get_my_profile_info()
         self.my_user_id = await self.get_user_id(self.my_username)
 
-    def set_cookies(self, resp_cookies):
-        self.cookies.update({name: value.value for name, value in resp_cookies.items()})
+    async def close():
+        await self.tls_client.close()
 
-    @async_retry
     async def request(self, method, url, acceptable_statuses=None, resp_handler=None, with_text=False, **kwargs):
-        headers = self.headers.copy()
-        cookies = self.cookies.copy()
-        if 'headers' in kwargs:
-            headers.update(kwargs.pop('headers'))
-        if 'cookies' in kwargs:
-            cookies.update(kwargs.pop('cookies'))
-        if DISABLE_SSL:
-            kwargs.update({'ssl': False})
         try:
-            async with aiohttp.ClientSession(connector=get_conn(self.proxy), headers=headers, cookies=cookies) as sess:
-                if method.lower() == 'get':
-                    async with sess.get(url, **kwargs) as resp:
-                        self.set_cookies(resp.cookies)
-                        return await handle_aio_response(resp, acceptable_statuses, resp_handler, with_text)
-                elif method.lower() == 'post':
-                    async with sess.post(url, **kwargs) as resp:
-                        self.set_cookies(resp.cookies)
-                        return await handle_aio_response(resp, acceptable_statuses, resp_handler, with_text)
-                else:
-                    raise Exception('Wrong request method')
+            return await self.tls_client.request(method, url, acceptable_statuses, resp_handler, with_text, **kwargs)
         except Exception as e:
             self.account.twitter_error = True
             raise e
 
     async def _get_ct0(self):
         try:
-            kwargs = {'ssl': False} if DISABLE_SSL else {}
-            async with aiohttp.ClientSession(connector=get_conn(self.proxy),
-                                             headers=self.headers, cookies=self.cookies) as sess:
-                async with sess.get('https://api.x.com/1.1/account/settings.json', **kwargs) as resp:
-                    new_csrf = resp.cookies.get("ct0")
-                    if new_csrf is None:
-                        raise Exception('Empty new csrf. Probably bad auth token')
-                    new_csrf = new_csrf.value
-                    return new_csrf
+            await self.tls_client.get('https://api.x.com/1.1/account/settings.json')
+            return self.tls_client.sess.cookies.get('ct0')
         except Exception as e:
             reason = 'Your account has been locked\n' if 'Your account has been locked' in str(e) else ''
             self.account.twitter_error = True
@@ -208,7 +169,7 @@ class Twitter:
         except Exception as e:
             raise Exception(f'Follow error: {str(e)}')
 
-    async def post_tweet(self, text, tweet_id=None) -> str:
+    async def post_tweet(self, text, tweet_id=None, attachment_url=None) -> str:
         action = "CreateTweet"
         query_id = "oB-5XsHNAbjvARJEc8CZFw"
         _json = dict(
@@ -254,6 +215,8 @@ class Twitter:
                 in_reply_to_tweet_id=tweet_id,
                 exclude_reply_user_ids=[]
             )
+        if attachment_url:
+            _json['variables']['attachment_url'] = attachment_url
 
         url = f'https://x.com/i/api/graphql/{query_id}/{action}'
 
@@ -268,6 +231,9 @@ class Twitter:
             return await self.request('POST', url, json=_json, resp_handler=_handler)
         except Exception as e:
             raise Exception(f'Post tweet error: {str(e)}')
+
+    async def quote(self, tweet_url, text):
+        return await self.post_tweet(text, attachment_url=tweet_url)
 
     async def retweet(self, tweet_id):
         action = 'CreateRetweet'

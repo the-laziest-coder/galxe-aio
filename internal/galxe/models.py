@@ -35,6 +35,10 @@ class QuizType(StrEnum):
     MULTI_CHOICE = 'MULTI_CHOICE'
 
 
+class SurveyType(StrEnum):
+    UPLOAD_FILE = 'UPLOAD_FILE'
+
+
 class Gamification(StrEnum):
     POINTS = 'Points'
     OAT = 'Oat'
