@@ -135,7 +135,7 @@ class GalxeAccount:
                 raise e
 
         if existed_twitter_username != '':
-            if existed_twitter_username.lower() == self.twitter.my_username:
+            if existed_twitter_username.lower() == self.twitter.my_username.lower():
                 return
             else:
                 logger.info(f'{self.idx}) Another Twitter account already linked with this EVM address: '
