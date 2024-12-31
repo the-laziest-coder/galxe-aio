@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 from loguru import logger
 
 from ..tls import TLSClient
@@ -53,7 +53,7 @@ class Mail3Client(BaseClient):
         message = await self.tls.get(f'{self.API_URL}/mailbox/account/message/{message_id}', [200])
         return message['text']['html']
 
-    async def _find_email(self, folder: str, subject_condition_func) -> Optional[str]:
+    async def _find_email(self, folder: str, subject_condition_func) -> Tuple[Optional[str], Optional[str]]:
         folder = folder if folder == 'INBOX' else folder.capitalize()
         messages = await self.tls.post(f'{self.API_URL}/mailbox/account/search', [200], lambda r: r['messages'], json={
             'path': folder,
@@ -63,8 +63,9 @@ class Mail3Client(BaseClient):
         })
 
         for message in messages:
-            if subject_condition_func(message.get('subject')):
-                return await self._get_message_body(message.get('id'))
+            subject = message.get('subject')
+            if subject_condition_func(subject):
+                return subject, await self._get_message_body(message.get('id'))
 
-        return None
+        return None, None
 

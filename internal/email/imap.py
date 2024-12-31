@@ -1,7 +1,7 @@
 import email
 from email.header import decode_header
 from email.message import Message
-from typing import Optional
+from typing import Optional, Tuple
 from loguru import logger
 from aioimaplib import aioimaplib
 
@@ -36,7 +36,7 @@ class IMAPClient(BaseClient):
         await self.imap.login(self.account.email_username, self.account.email_password)
         await self.imap.select()
 
-    async def _find_email(self, folder: str, subject_condition_func) -> Optional[str]:
+    async def _find_email(self, folder: str, subject_condition_func) -> Tuple[Optional[str], Optional[str]]:
         _, messages = await self.imap.select(folder)
         msg_cnt = 0
         for message in messages:
@@ -53,8 +53,8 @@ class IMAPClient(BaseClient):
             if isinstance(subject, bytes):
                 subject = subject.decode(encoding if encoding else 'utf-8')
             if subject_condition_func(subject):
-                return self.get_email_body(msg)
-        return None
+                return subject, self.get_email_body(msg)
+        return None, None
 
     def get_email_body(self, msg: Message):
         if msg.is_multipart():

@@ -20,7 +20,7 @@ FORCE_LINK_EMAIL = false
 GALXE_CAMPAIGN_IDS = ["GCTN3ttM4T", "GC433ttn6N"]
 HIDE_UNSUPPORTED = false
 
-# Spaces aliases to track all points. If empty returns all used spaces
+# Spaces aliases to track all points
 SPACES_STATS = []
 
 [RPCs]
@@ -32,3 +32,4 @@ Arbitrum = 'https://arb1.arbitrum.io/rpc'
 Avalanche = 'https://avalanche-c-chain.publicnode.com'
 Base = 'https://mainnet.base.org'
 Scroll = 'https://1rpc.io/scroll'
+Gravity = 'https://rpc.gravity.xyz'

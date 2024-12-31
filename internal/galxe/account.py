@@ -144,7 +144,7 @@ class GalxeAccount:
         logger.info(f'{self.idx}) Starting link new Twitter account')
 
         galxe_id = self.profile.get('id')
-        tweet_text = f'Verifying my Twitter account for my #GalxeID gid:{galxe_id} @Galxe \n\n galxe.com/galxeid '
+        tweet_text = f'Verifying my Twitter account for my #GalxeID gid:{galxe_id} @Galxe \n\n galxe.com/id '
 
         try:
             try:
@@ -189,8 +189,10 @@ class GalxeAccount:
                 captcha = await self.get_captcha()
                 await self.client.send_verify_code(email_username, captcha)
                 logger.info(f'{self.idx}) Verify code was sent to {email_username}')
-                email_text = await email_client.wait_for_email(lambda s: s == 'Please confirm your email on Galxe')
-                code = self._extract_code_from_email(email_text)
+                email_subj, _ = await email_client.wait_for_email(
+                    lambda s: s.startswith('Your Galxe Verification Code is '),
+                )
+                code = self._extract_code_from_email_subj(email_subj)
                 await self.client.update_email(email_username, code)
         except Exception as e:
             raise Exception(f'Failed to link email: {str(e)}')
@@ -251,8 +253,8 @@ class GalxeAccount:
         return str(base64.b64decode(token.encode("utf-8")), 'utf-8')
 
     @classmethod
-    def _extract_code_from_email(cls, text):
-        return text[text.find('<h1>') + 4:text.find('</h1>')]
+    def _extract_code_from_email_subj(cls, subj):
+        return subj.split()[5]
 
     @classmethod
     def _is_parent_campaign(cls, campaign):
@@ -917,12 +919,19 @@ class GalxeAccount:
         nft_core_address = claim_data['mintFuncInfo']['nftCoreAddress']
         verify_id = claim_data['mintFuncInfo']['verifyIDs'][0]
         powah = claim_data['mintFuncInfo']['powahs'][0]
+        cap = claim_data['mintFuncInfo'].get('cap')
 
         async with OnchainAccount(self.account, chain) as onchain:
-            tx_hash = await onchain.claim(
-                space_station_address,
-                number_id, signature, nft_core_address, verify_id, powah
-            )
+            if cap:
+                tx_hash = await onchain.claim_capped(
+                    space_station_address,
+                    number_id, signature, nft_core_address, verify_id, powah, cap
+                )
+            else:
+                tx_hash = await onchain.claim(
+                    space_station_address,
+                    number_id, signature, nft_core_address, verify_id, powah
+                )
 
         try:
             await self.client.participate(campaign['id'], space_chain, nonce, tx_hash, verify_id)

@@ -95,6 +95,22 @@ class OnchainAccount:
         await self._tx_verification(tx_hash, action)
         return tx_hash.hex()
 
+    async def claim_capped(self, space_station_address, number_id, signature,
+                           nft_core_address, verify_id, powah, cap) -> str:
+        try:
+            space_station_address = Web3.to_checksum_address(space_station_address)
+            nft_core_address = Web3.to_checksum_address(nft_core_address)
+            contract = self.w3.eth.contract(space_station_address, abi=SPACE_STATION_ABI)
+
+            tx_hash = await self.build_and_send_tx(
+                contract.functions.claimCapped(number_id, nft_core_address, verify_id, powah, cap, to_bytes(signature)),
+                'Claim'
+            )
+            return tx_hash
+
+        except Exception as e:
+            raise Exception(f'Failed to claim capped: {str(e)}')
+
     @async_retry
     async def claim(self, space_station_address, number_id, signature, nft_core_address, verify_id, powah) -> str:
         try:

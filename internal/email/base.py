@@ -1,6 +1,6 @@
 import asyncio
 from loguru import logger
-from typing import Optional
+from typing import Optional, Tuple
 
 from ..models import AccountInfo
 
@@ -38,32 +38,32 @@ class BaseClient:
     async def _find_email(self, folder: str, subject_condition_func) -> Optional[str]:
         raise NotImplementedError()
 
-    async def find_email(self, subject_condition_func) -> Optional[str]:
+    async def find_email(self, subject_condition_func) -> Tuple[Optional[str], Optional[str]]:
         try:
             for folder in FOLDERS:
-                result = await self._find_email(folder, subject_condition_func)
-                if result is not None:
-                    return result
-            return None
+                subj, text = await self._find_email(folder, subject_condition_func)
+                if subj is not None:
+                    return subj, text
+            return None, None
         except Exception as e:
             raise Exception(f'Find email failed: {str(e)}')
 
-    async def wait_for_email(self, subject_condition_func, timeout=90, polling=10) -> Optional[str]:
+    async def wait_for_email(self, subject_condition_func, timeout=90, polling=10) -> Tuple[Optional[str], Optional[str]]:
         exc_cnt = 0
         for t in range(0, timeout + 1, polling):
             await asyncio.sleep(polling)
             try:
-                result = await self.find_email(subject_condition_func)
+                subj, text = await self.find_email(subject_condition_func)
                 exc_cnt = 0
             except Exception as e:
                 exc_cnt += 1
                 if exc_cnt > 2:
                     raise Exception(f'Wait for email failed: {str(e)}')
                 logger.warning(f'{self.account.idx}) Wait for email failed: {str(e)}')
-                result = None
+                subj, text = None, None
 
-            if result is not None:
-                return result
+            if subj is not None:
+                return subj, text
 
             logger.info(f'{self.account.idx}) Email not found. Waiting for {polling}s')
 
