@@ -1,5 +1,5 @@
 aiofiles==23.2.1
-aiohttp==3.9.4
+aiohttp==3.10.11
 aiohttp_socks==0.8.4
 aioimaplib==1.0.1
 beautifulsoup4==4.12.3
