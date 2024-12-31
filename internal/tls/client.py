@@ -39,11 +39,11 @@ class TLSClient:
             proxies=self.proxies,
             headers=headers,
             cookies=custom_cookies,
-            impersonate=BrowserType.chrome120
+            impersonate=BrowserType.chrome131,
         )
 
     async def close(self):
-        self.sess.close()
+        await self.sess.close()
 
     @classmethod
     def _handle_response(cls, resp_raw, acceptable_statuses=None, resp_handler=None, with_text=False):
@@ -64,16 +64,17 @@ class TLSClient:
 
     @async_retry
     async def _raw_request(self, method, url, headers, **kwargs):
-        match method:
-            case 'GET':
+        match method.lower():
+            case 'get':
                 resp = await self.sess.get(url, headers=headers, **kwargs)
-            case 'POST':
+            case 'post':
                 resp = await self.sess.post(url, headers=headers, **kwargs)
             case unexpected:
                 raise Exception(f'Wrong request method: {unexpected}')
         return resp
 
-    async def request(self, method, url, acceptable_statuses=None, resp_handler=None, with_text=False, **kwargs):
+    async def request(self, method, url, acceptable_statuses=None, resp_handler=None, with_text=False,
+                      raw=False, **kwargs):
         headers = self._headers.copy()
         if 'headers' in kwargs:
             headers.update(kwargs.pop('headers'))
@@ -82,6 +83,8 @@ class TLSClient:
         if DISABLE_SSL:
             kwargs.update({'verify': False})
         resp = await self._raw_request(method, url, headers, **kwargs)
+        if raw:
+            return resp
         return self._handle_response(resp, acceptable_statuses, resp_handler, with_text)
 
     async def get(self, url, acceptable_statuses=None, resp_handler=None, with_text=False, **kwargs):

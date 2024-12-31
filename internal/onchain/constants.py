@@ -20,10 +20,12 @@ SCANS = {
     'Base': 'https://basescan.org',
     'zkEVM': 'https://zkevm.polygonscan.com',
     'Scroll': 'https://scrollscan.com',
+    'Gravity': 'https://explorer.gravity.xyz',
 }
 
 ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 SPACE_STATION_ABI = json.load(read_file('abi/space_station.json'))
+LOYALTY_POINTS_ABI = json.load(read_file('abi/loyalty_points.json'))
 
 EIP1559_CHAINS = ['Ethereum', 'Optimism', 'Polygon', 'Arbitrum', 'Linea', 'Base', 'Scroll']
