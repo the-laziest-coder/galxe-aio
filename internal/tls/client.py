@@ -1,3 +1,4 @@
+import platform
 import warnings
 from curl_cffi.requests import AsyncSession, BrowserType
 
@@ -8,6 +9,12 @@ from ..vars import USER_AGENT, SEC_CH_UA, SEC_CH_UA_PLATFORM
 
 
 warnings.filterwarnings('ignore', module='curl_cffi')
+
+
+if platform.system() == 'Windows':
+    IMPERSONATE = BrowserType.chrome124
+else:
+    IMPERSONATE = BrowserType.chrome131
 
 
 def get_default_headers():
@@ -39,7 +46,7 @@ class TLSClient:
             proxies=self.proxies,
             headers=headers,
             cookies=custom_cookies,
-            impersonate=BrowserType.chrome131,
+            impersonate=IMPERSONATE,
         )
 
     async def close(self):

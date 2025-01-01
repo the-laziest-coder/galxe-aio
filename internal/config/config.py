@@ -1,5 +1,9 @@
 import csv
+import sys
 import toml
+import platform
+import subprocess
+from importlib.metadata import version
 
 
 cfg = toml.load(open('config.toml', 'r', encoding='utf-8'))
@@ -28,3 +32,16 @@ SURVEYS = {row[0].lower(): row[1:] for row in SURVEYS}
 HIDE_UNSUPPORTED = cfg.get('HIDE_UNSUPPORTED')
 SPACES_STATS = cfg.get('SPACES_STATS')
 RPCs = cfg.get('RPCs')
+
+
+curl_cffi_installed_version = version('curl_cffi')
+if platform.system() == 'Windows':
+    if curl_cffi_installed_version == '0.8.1b8':
+        print('\nNeed to downgrade curl-cffi version for Windows')
+        subprocess.check_call([sys.executable, "-m", "pip", "install", 'curl_cffi==0.7.4'])
+        print('Successfully installed curl_cffi==0.7.4\n')
+else:
+    if curl_cffi_installed_version != '0.8.1b8':
+        print('\nNeed to upgrade curl-cffi version for Mac/Linux')
+        subprocess.check_call([sys.executable, "-m", "pip", "install", 'curl_cffi==0.8.1b8'])
+        print('Successfully installed curl_cffi==0.8.1b8\n')
