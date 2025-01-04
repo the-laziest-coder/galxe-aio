@@ -2,6 +2,7 @@ from uuid import uuid4
 
 from ..models import AccountInfo
 from ..tls import TLSClient
+from ..utils import async_retry
 
 
 class Client(TLSClient):
@@ -203,6 +204,7 @@ class Client(TLSClient):
         }
         await self.api_request(body, exc_condition=lambda resp: resp['data']['verifyDiscordAccount'] is None)
 
+    @async_retry
     async def get_campaign_info(self, campaign_id):
         body = {
             'operationName': 'CampaignDetailAll',

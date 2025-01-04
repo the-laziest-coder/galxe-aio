@@ -34,7 +34,7 @@ def get_default_headers():
 
 class TLSClient:
 
-    def __init__(self, account: AccountInfo, custom_headers: dict = None, custom_cookies: dict = None):
+    def __init__(self, account: AccountInfo, custom_headers: dict = None, custom_cookies: dict = None, debug=False):
         self.account = account
         self._headers = {}
         self.proxy = get_proxy_url(self.account.proxy)
@@ -48,6 +48,7 @@ class TLSClient:
             cookies=custom_cookies,
             impersonate=IMPERSONATE,
         )
+        self.debug = debug
 
     async def close(self):
         await self.sess.close()
@@ -67,29 +68,26 @@ class TLSClient:
                             f'Response saved in logs/errors.txt\n{resp_raw.text}')
 
     def update_headers(self, new_headers: dict):
-        self._headers.update(new_headers)
+        self.sess.headers.update(new_headers)
 
     @async_retry
-    async def _raw_request(self, method, url, headers, **kwargs):
+    async def _raw_request(self, method, url, **kwargs):
         match method.lower():
             case 'get':
-                resp = await self.sess.get(url, headers=headers, **kwargs)
+                resp = await self.sess.get(url, **kwargs)
             case 'post':
-                resp = await self.sess.post(url, headers=headers, **kwargs)
+                resp = await self.sess.post(url, **kwargs)
             case unexpected:
                 raise Exception(f'Wrong request method: {unexpected}')
         return resp
 
     async def request(self, method, url, acceptable_statuses=None, resp_handler=None, with_text=False,
                       raw=False, **kwargs):
-        headers = self._headers.copy()
-        if 'headers' in kwargs:
-            headers.update(kwargs.pop('headers'))
         if 'timeout' not in kwargs:
             kwargs.update({'timeout': 60})
         if DISABLE_SSL:
             kwargs.update({'verify': False})
-        resp = await self._raw_request(method, url, headers, **kwargs)
+        resp = await self._raw_request(method, url, **kwargs)
         if raw:
             return resp
         return self._handle_response(resp, acceptable_statuses, resp_handler, with_text)

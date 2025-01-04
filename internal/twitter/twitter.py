@@ -53,43 +53,35 @@ class Twitter:
 
     def __init__(self, account_info: AccountInfo):
         self.account = account_info
-        self.cookies = {
-            'auth_token': account_info.twitter_auth_token,
-            'ct0': self.account.twitter_ct0,
-        }
         self.proxy = get_proxy_url(account_info.proxy)
         self.my_user_id = None
         self.my_username = None
-        self.tls = TLSClient(self.account, _get_headers())
+        self.tls = TLSClient(self.account, _get_headers(), debug=True)
         self.client_transaction = ClientTransaction()
 
     async def start(self):
+        await self.client_transaction.init(self.tls)
+        self.set_cookies({'auth_token': self.account.twitter_auth_token})
         ct0 = self.account.twitter_ct0
         if ct0 == '':
             ct0 = await self._get_ct0()
             self.account.twitter_ct0 = ct0
-        self.cookies.update({'ct0': ct0})
+        self.set_cookies({'ct0': ct0})
         self.tls.update_headers({'x-csrf-token': ct0})
         self.my_username = await self.get_my_profile_info()
         self.my_user_id = await self.get_user_id(self.my_username)
 
-    def set_cookies(self, resp_cookies):
-        self.cookies.update({name: value.value for name, value in resp_cookies.items()})
+    def set_cookies(self, cookies):
+        for name, value in cookies.items():
+            self.tls.sess.cookies.set(name, value, self.COOKIES_DOMAIN)
 
     async def request(self, method, url, **kwargs):
-        if not self.client_transaction.home_page_response:
-            await self.client_transaction.init(self.tls)
-        cookies = self.cookies.copy()
-        if 'cookies' in kwargs:
-            cookies.update(kwargs.pop('cookies'))
-        if DISABLE_SSL:
-            kwargs.update({'ssl': False})
         try:
             tx_id = self.client_transaction.generate_transaction_id(method, urlparse(url).path)
             headers = {'X-Client-Transaction-Id': tx_id}
             if 'headers' in kwargs:
                 headers.update(kwargs.pop('headers'))
-            return await self.tls.request(method, url, headers=headers, cookies=cookies, **kwargs)
+            return await self.tls.request(method, url, headers=headers, **kwargs)
         except Exception as e:
             self.account.twitter_error = True
             raise e

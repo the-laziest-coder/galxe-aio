@@ -158,6 +158,7 @@ class GalxeAccount:
                     logger.info(f'{self.idx}) Duplicate tweet found: {tweet_url}')
                 else:
                     raise e
+            logger.info(f'{self.idx}) Posted link tweet: {tweet_url}')
             await wait_a_bit()
             await self.client.check_twitter_account(tweet_url)
             await self.client.verify_twitter_account(tweet_url)
