@@ -824,7 +824,7 @@ class GalxeAccount:
                     if not sufficient:
                         logger.info(f'{self.idx}) Insufficient space balance for gasless claim')
                         gas_less, was_gasless = False, True
-                if not gas_less:
+                if not gas_less and claim_data['mintFuncInfo'].get('nftCoreAddress'):
                     await self._claim_gas_reward(campaign, claim_data, was_gasless)
                 claimed_nfts = len(claim_data['mintFuncInfo']['verifyIDs'])
                 claimed_log = plural_str(claimed_nfts, nft_type)

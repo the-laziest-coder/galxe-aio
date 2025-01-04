@@ -75,13 +75,14 @@ class Twitter:
         for name, value in cookies.items():
             self.tls.sess.cookies.set(name, value, self.COOKIES_DOMAIN)
 
-    async def request(self, method, url, **kwargs):
+    async def request(self, method, url, resp_handler=None, **kwargs):
         try:
             tx_id = self.client_transaction.generate_transaction_id(method, urlparse(url).path)
             headers = {'X-Client-Transaction-Id': tx_id}
             if 'headers' in kwargs:
                 headers.update(kwargs.pop('headers'))
-            return await self.tls.request(method, url, headers=headers, **kwargs)
+            resp_handler = self.get_check_errors_resp_handler(resp_handler)
+            return await self.tls.request(method, url, headers=headers, resp_handler=resp_handler, **kwargs)
         except Exception as e:
             self.account.twitter_error = True
             raise e
@@ -95,17 +96,25 @@ class Twitter:
             self.account.twitter_error = True
             raise Exception(f'Failed to get ct0 for twitter: {reason}{str(e)}')
 
-    def check_response_errors(self, resp):
+    def get_check_errors_resp_handler(self, resp_handler):
+        check = self.check_response_errors
+        return lambda resp: check(resp) if resp_handler is None else resp_handler(check(resp))
+
+    @classmethod
+    def check_response_errors(cls, resp):
         if type(resp) is not dict:
-            return
+            return resp
         errors = resp.get('errors', [])
         if type(errors) is not list:
-            return
+            return resp
         if len(errors) == 0:
-            return
-        error_msg = ' | '.join([msg for msg in [err.get('message') for err in errors if type(err) is dict] if msg])
+            return resp
+        msgs = [msg for msg in [f"{err.get('message')} (code={err.get('code')})"
+                                for err in errors if type(err) is dict] if msg]
+        msgs = list(set(msgs))
+        error_msg = ' | '.join(msgs)
         if len(error_msg) == 0:
-            return
+            return resp
         raise Exception(error_msg)
 
     async def get_my_profile_info(self):
@@ -282,7 +291,6 @@ class Twitter:
         }
         try:
             resp = await self.request('POST', url, json=_json, resp_handler=lambda r: r)
-            self.check_response_errors(resp)
             return resp
         except Exception as e:
             raise Exception(f'Retweet error: {str(e)}')
