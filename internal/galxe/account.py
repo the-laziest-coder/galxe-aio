@@ -517,6 +517,16 @@ class GalxeAccount:
         match credential['credSource']:
             case CredSource.SPACE_USERS:
                 await self._follow_space(campaign_id, credential['id'])
+            case CredSource.QUIZ:
+                await self.solve_quiz(credential)
+            case CredSource.SURVEY:
+                await self._complete_survey(campaign_id, credential)
+            case CredSource.VISIT_LINK:
+                await self.add_typed_credential(campaign_id, credential)
+                return True
+            case CredSource.WATCH_YOUTUBE:
+                await self.add_typed_credential(campaign_id, credential)
+                return True
             case unexpected:
                 if not HIDE_UNSUPPORTED:
                     raise Exception(f'{unexpected} credential source for Galxe ID task is not supported yet')
