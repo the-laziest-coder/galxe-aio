@@ -6,7 +6,7 @@ from web3.middleware import async_geth_poa_middleware
 from web3.contract.async_contract import AsyncContractConstructor
 
 from ..models import AccountInfo
-from ..utils import async_retry, get_proxy_url, get_w3, to_bytes
+from ..utils import async_retry, get_proxy_url, get_w3, to_bytes, int_to_decimal
 from ..config import RPCs
 
 from .constants import SCANS, EIP1559_CHAINS, SPACE_STATION_ABI, LOYALTY_POINTS_ABI
@@ -128,17 +128,19 @@ class OnchainAccount:
             raise Exception(f'Failed to claim: {str(e)}')
 
     @async_retry
-    async def claim_loyalty_points(self, lp_dist_station_address, lp_contract, verify_id, amount, signature) -> str:
+    async def claim_loyalty_points(self, lp_dist_station_address, lp_contract, verify_id, claim_fee, amount, signature) -> str:
         try:
             lp_dist_station_address = Web3.to_checksum_address(lp_dist_station_address)
             lp_contract = Web3.to_checksum_address(lp_contract)
             contract = self.w3.eth.contract(lp_dist_station_address, abi=LOYALTY_POINTS_ABI)
+            claim_fee = int(claim_fee)
             amount = int(amount * 10 ** 18)
             tx_hash = await self.build_and_send_tx(
                 contract.functions.increasePoint(
-                    lp_contract, verify_id, self.account.evm_address, amount, to_bytes(signature)
+                    lp_contract, verify_id, self.account.evm_address, amount, claim_fee, to_bytes(signature)
                 ),
-                'Claim Loyalty Points'
+                f'Claim Loyalty Points (fee {round(int_to_decimal(claim_fee, 18), 1)} $G)',
+                value=claim_fee,
             )
             return tx_hash
 

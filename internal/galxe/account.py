@@ -908,6 +908,7 @@ class GalxeAccount:
                 lp_tx_resp['loyaltyPointDistributionStation'],
                 lp_tx_resp['loyaltyPointContract'],
                 lp_tx_resp['VerifyIDs'][0],
+                lp_tx_resp.get('claimFeeAmount', 0),
                 amount,
                 lp_tx_resp['signature'],
             )

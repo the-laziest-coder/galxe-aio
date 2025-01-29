@@ -71,7 +71,12 @@ class TLSClient:
         self.sess.headers.update(new_headers)
 
     @async_retry
-    async def _raw_request(self, method, url, **kwargs):
+    async def _raw_request(self, method, url, debug=False, **kwargs):
+        if debug:
+            print('tls cookies', self.sess.cookies)
+            print('new cookies', kwargs.get('cookies'))
+            print('tls headers', self.sess.headers)
+            print('new headers', kwargs.get('headers'))
         match method.lower():
             case 'get':
                 resp = await self.sess.get(url, **kwargs)
