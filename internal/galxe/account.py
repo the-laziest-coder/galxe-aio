@@ -515,7 +515,7 @@ class GalxeAccount:
 
     async def _complete_galxe_id(self, campaign_id: str, credential) -> bool:
         match credential['credSource']:
-            case CredSource.SPACE_USERS:
+            case CredSource.SPACE_USERS | CredSource.SPACE_FOLLOWER:
                 await self._follow_space(campaign_id, credential['id'])
             case CredSource.QUIZ:
                 await self.solve_quiz(credential)

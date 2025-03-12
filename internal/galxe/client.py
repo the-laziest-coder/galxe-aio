@@ -354,7 +354,7 @@ class Client(TLSClient):
     async def send_verify_code(self, email_username, captcha):
         body = {
             'operationName': 'SendVerifyCode',
-            'query': 'mutation SendVerifyCode($input: SendVerificationEmailInput!) {\n  sendVerificationCode(input: $input) {\n    code\n    message\n    __typename\n  }\n}\n',
+            'query': 'mutation SendVerifyCode($input: SendVerificationEmailInput!) {\n  sendVerificationCode(input: $input) {\n    code\n    message\n    __typename\n  }\n}',
             'variables': {
                 'input': {
                     'address': self.full_address,

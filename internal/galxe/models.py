@@ -22,6 +22,7 @@ class CredSource(StrEnum):
     QUIZ = 'QUIZ'
     SURVEY = 'SURVEY'
     SPACE_USERS = 'SPACE_USERS'
+    SPACE_FOLLOWER = 'SPACE_FOLLOWER'
     WATCH_YOUTUBE = 'WATCH_YOUTUBE'
     CSV = 'CSV'
 
