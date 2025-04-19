@@ -68,7 +68,19 @@ class Twitter:
             self.account.twitter_ct0 = ct0
         self.set_cookies({'ct0': ct0})
         self.tls.update_headers({'x-csrf-token': ct0})
-        self.my_username = await self.get_my_profile_info()
+        try:
+            self.my_username = await self.get_my_profile_info()
+        except Exception as e:
+            if 'This request requires a matching csrf cookie and header' in str(e):
+                self.tls.sess.cookies.delete('ct0', self.COOKIES_DOMAIN)
+                self.tls.sess.headers.pop('x-csrf-token')
+                ct0 = await self._get_ct0()
+                self.account.twitter_ct0 = ct0
+                self.set_cookies({'ct0': ct0})
+                self.tls.update_headers({'x-csrf-token': ct0})
+                self.my_username = await self.get_my_profile_info()
+            else:
+                raise e
         self.my_user_id = await self.get_user_id(self.my_username)
 
     def set_cookies(self, cookies):
