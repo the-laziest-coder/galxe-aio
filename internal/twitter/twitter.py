@@ -188,6 +188,8 @@ class Twitter:
         try:
             return await self.request("GET", url, params=params, resp_handler=_handler)
         except Exception as e:
+            if 'UserUnavailable' in str(e):
+                raise UserNotFound()
             raise Exception(f'Get user id error: {str(e)}')
 
     async def follow(self, username):

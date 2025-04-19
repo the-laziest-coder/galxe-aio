@@ -418,7 +418,10 @@ class GalxeAccount:
             logger.info(f'{self.idx}) Extra wait 15s after Discord task verification')
             await asyncio.sleep(15)
 
-    quote_mention_re = re.compile(r'mention \d+ friends')
+    quote_mention_res = [
+        (re.compile(r'mention \d+ friends'), 1),
+        (re.compile(r'mentioned at least \d+ friends'), 3),
+    ]
 
     async def _complete_twitter(self, campaign_id: str, credential, fake_twitter) -> bool:
         await self.link_twitter(fake_twitter)
@@ -446,9 +449,16 @@ class GalxeAccount:
                     text = get_query_param(credential['referenceLink'], 'text')
                     tweet_link = text[text.rfind(' ') + 1:]
                     text = text[:text.rfind(' ')]
-                    mentions = self.quote_mention_re.findall(credential['name'].lower())
-                    if mentions:
-                        mentions_number = int(mentions[0].split()[1])
+                    mentions_number = None
+                    for mention_text in [credential['name'].lower(), credential['description'].lower()]:
+                        for mention_re, mention_order in self.quote_mention_res:
+                            mentions = mention_re.findall(mention_text)
+                            if mentions:
+                                mentions_number = int(mentions[0].split()[mention_order])
+                                break
+                        if mentions_number:
+                            break
+                    if mentions_number:
                         usernames = []
                         for _ in range(mentions_number):
                             username = await self.fake_username()
@@ -458,6 +468,11 @@ class GalxeAccount:
                                 except UserNotFound:
                                     username = await self.fake_username()
                                     continue
+                                except Exception as e:
+                                    if 'User not found' in str(e):
+                                        username = await self.fake_username()
+                                        continue
+                                    raise e
                                 break
                             usernames.append(username)
                         text += ''.join([f' @{un}' for un in usernames])
