@@ -65,6 +65,7 @@ async def process_account(account_data: Tuple[int, Tuple[str, str, str, str, str
             account_info.discord_token = discord
         logger.info(f'{idx}) Saved account info restored')
 
+    account_info.idx = idx
     account_info.twitter_error = False
     account_info.discord_error = False
     account_info.actual_campaigns = []

@@ -542,6 +542,8 @@ class GalxeAccount:
             case CredSource.WATCH_YOUTUBE:
                 await self.add_typed_credential(campaign_id, credential)
                 return True
+            case CredSource.CAMPAIGN_REFERRAL:
+                return True
             case unexpected:
                 if not HIDE_UNSUPPORTED:
                     raise Exception(f'{unexpected} credential source for Galxe ID task is not supported yet')

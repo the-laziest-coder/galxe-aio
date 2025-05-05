@@ -25,6 +25,7 @@ class CredSource(StrEnum):
     SPACE_FOLLOWER = 'SPACE_FOLLOWER'
     WATCH_YOUTUBE = 'WATCH_YOUTUBE'
     CSV = 'CSV'
+    CAMPAIGN_REFERRAL = 'CAMPAIGN_REFERRAL'
 
 
 class ConditionRelation(StrEnum):
