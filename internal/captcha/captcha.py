@@ -96,20 +96,20 @@ async def solve_geetest(idx, url, proxy, gt, challenge, version, init_parameters
             CAP_SOLVER_API_URL, CAP_SOLVER_API_KEY, TaskType.GEETEST,
             idx, url, proxy=proxy, proxy_one_line=True, challenge=challenge, captchaId=gt,
         )
-    elif TWO_CAPTCHA_API_KEY:
-        return await _solve_captcha(
-            TWO_CAPTCHA_API_URL, TWO_CAPTCHA_API_KEY, TaskType.GEETEST,
-            idx, url, proxy=proxy, userAgent=USER_AGENT, gt=gt, challenge=challenge,
-            version=version, initParameters=init_parameters,
-        )
-    elif CAP_MONSTER_API_KEY:
-        return await _solve_captcha(
-            CAP_MONSTER_API_URL, CAP_MONSTER_API_KEY, TaskType.GEETEST,
-            idx, url, proxy=proxy, userAgent=USER_AGENT, gt=gt, challenge=challenge,
-            version=version, initParameters=init_parameters,
-        )
+    # elif TWO_CAPTCHA_API_KEY:
+    #     return await _solve_captcha(
+    #         TWO_CAPTCHA_API_URL, TWO_CAPTCHA_API_KEY, TaskType.GEETEST,
+    #         idx, url, proxy=proxy, userAgent=USER_AGENT, gt=gt, challenge=challenge,
+    #         version=version, initParameters=init_parameters,
+    #     )
+    # elif CAP_MONSTER_API_KEY:
+    #     return await _solve_captcha(
+    #         CAP_MONSTER_API_URL, CAP_MONSTER_API_KEY, TaskType.GEETEST,
+    #         idx, url, proxy=proxy, userAgent=USER_AGENT, gt=gt, challenge=challenge,
+    #         version=version, initParameters=init_parameters,
+    #     )
     else:
-        raise Exception('No captcha service API keys specified for geetest')
+        raise Exception('Only CapSolver supported')
 
 
 async def _solve_captcha(api_url, client_key,
