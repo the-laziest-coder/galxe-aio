@@ -65,7 +65,7 @@ class GalxeAccount:
         try:
             solution = await solve_geetest(
                 self.idx, 'https://app.galxe.com/quest', self.account.proxy,
-                GALXE_CAPTCHA_ID, str(uuid4()), 4,
+                GALXE_CAPTCHA_ID, 'AddTypedCredentialItems', 4,
                 {
                     'captcha_id': GALXE_CAPTCHA_ID,
                     'client_type': 'web',

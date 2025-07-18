@@ -94,7 +94,7 @@ async def solve_geetest(idx, url, proxy, gt, challenge, version, init_parameters
     if CAP_SOLVER_API_KEY:
         return await _solve_captcha(
             CAP_SOLVER_API_URL, CAP_SOLVER_API_KEY, TaskType.GEETEST,
-            idx, url, proxy=proxy, proxy_one_line=True, gt=gt, challenge=challenge, captchaId=gt,
+            idx, url, proxy=proxy, proxy_one_line=True, challenge=challenge, captchaId=gt,
         )
     elif TWO_CAPTCHA_API_KEY:
         return await _solve_captcha(
