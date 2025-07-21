@@ -57,10 +57,10 @@ def captcha_retry(async_func):
         try:
             return await async_func(*args, **kwargs)
         except Exception as e:
-            if 'recaptcha' in str(e):
-                logger.info('Recaptcha error. Trying to update fingerprint')
-                await fingerprints.generate_new()
-                return await async_func(*args, **kwargs)
+            # if 'recaptcha' in str(e):
+            #     logger.info('Recaptcha error. Trying to update fingerprint')
+            #     await fingerprints.generate_new()
+            #     return await async_func(*args, **kwargs)
             raise
 
     return wrapper
