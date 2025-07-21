@@ -61,11 +61,11 @@ class GalxeAccount:
         await self.close()
 
     @async_retry
-    async def get_captcha(self):
+    async def get_captcha(self, action: str):
         try:
             solution = await solve_geetest(
                 self.idx, 'https://app.galxe.com/quest', self.account.proxy,
-                GALXE_CAPTCHA_ID, 'AddTypedCredentialItems', 4,
+                GALXE_CAPTCHA_ID, action, 4,
                 {
                     'captcha_id': GALXE_CAPTCHA_ID,
                     'client_type': 'web',
@@ -187,7 +187,7 @@ class GalxeAccount:
             async with Email.from_account(self.account) as email_client:
                 await email_client.login()
                 email_username = email_client.username()
-                captcha = await self.get_captcha()
+                captcha = await self.get_captcha('SendVerifyCode')
                 await self.client.send_verify_code(email_username, captcha)
                 logger.info(f'{self.idx}) Verify code was sent to {email_username}')
                 email_subj, _ = await email_client.wait_for_email(
@@ -636,7 +636,7 @@ class GalxeAccount:
 
     @captcha_retry
     async def add_typed_credential(self, campaign_id: str, credential):
-        captcha = await self.get_captcha()
+        captcha = await self.get_captcha('AddTypedCredentialItems')
         await self.client.add_typed_credential_items(campaign_id, credential['id'], captcha)
         await wait_a_bit(3)
 
@@ -646,7 +646,7 @@ class GalxeAccount:
         match cred_type:
             case Credential.TWITTER:
                 await self.client.twitter_oauth2_status()
-                captcha = await self.get_captcha()
+                captcha = await self.get_captcha('SyncCredentialValue')
                 sync_options.update({
                     'twitter': {
                         'campaignID': campaign_id,
@@ -912,7 +912,7 @@ class GalxeAccount:
         params = self._get_claim_params(campaign, silent=True)
         if params['pointMintAmount'] > 0 and params['mintCount'] > 0:
             params['pointMintAmount'] = 0
-        captcha = await self.get_captcha()
+        captcha = await self.get_captcha('PrepareParticipate')
         return await self.client.prepare_participate(
             campaign['id'], captcha, chain,
             referral_code=self.get_referral_code(campaign),
