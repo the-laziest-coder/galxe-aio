@@ -23,6 +23,7 @@ RANDOM_ORDER = cfg.get('RANDOM_ORDER')
 FAKE_TWITTER = cfg.get('FAKE_TWITTER')
 FORCE_LINK_EMAIL = cfg.get('FORCE_LINK_EMAIL')
 GALXE_CAMPAIGN_IDS = cfg.get('GALXE_CAMPAIGN_IDS')
+WAIT_BETWEEN_TASKS = cfg.get('WAIT_BETWEEN_TASKS')
 REFERRAL_LINKS = [line.strip() for line in open('files/referral_links.txt', 'r', encoding='utf-8').read().splitlines()
                   if line.strip() != '']
 with open('files/surveys.csv', 'r', encoding='utf-8') as file:

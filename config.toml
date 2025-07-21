@@ -20,6 +20,8 @@ FORCE_LINK_EMAIL = false
 GALXE_CAMPAIGN_IDS = ["GCTN3ttM4T", "GC433ttn6N"]
 HIDE_UNSUPPORTED = false
 
+WAIT_BETWEEN_TASKS = [5, 10]
+
 # Spaces aliases to track all points
 SPACES_STATS = []
 

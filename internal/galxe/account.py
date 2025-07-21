@@ -19,7 +19,7 @@ from ..storage import Storage
 from ..twitter import Twitter, UserNotFound
 from ..onchain import OnchainAccount
 from ..captcha import solve_geetest
-from ..config import FAKE_TWITTER, HIDE_UNSUPPORTED, MAX_TRIES, FORCE_LINK_EMAIL, REFERRAL_LINKS, SURVEYS
+from ..config import FAKE_TWITTER, HIDE_UNSUPPORTED, MAX_TRIES, FORCE_LINK_EMAIL, REFERRAL_LINKS, SURVEYS, WAIT_BETWEEN_TASKS
 from ..utils import wait_a_bit, get_query_param, get_proxy_url, async_retry, log_long_exc, plural_str
 
 from .client import Client
@@ -316,6 +316,10 @@ class GalxeAccount:
     async def complete_campaign(self, campaign_id: str):
         return await self._process_campaign(campaign_id, self._complete_campaign_process)
 
+    @classmethod
+    async def _wait_new_task(cls):
+        await asyncio.sleep(random.uniform(*WAIT_BETWEEN_TASKS))
+
     async def _complete_campaign_process(self, campaign):
         logger.info(f'{self.idx}) Starting complete {campaign["name"]}')
 
@@ -337,7 +341,7 @@ class GalxeAccount:
                 conditions = [{'eligible': c['eligible']} for c in conditions]
                 cred_group = {'conditions': conditions, 'credentials': credentials}
                 need_retry = await self._complete_cred_group(campaign['id'], cred_group)
-                await wait_a_bit(2)
+                await self._wait_new_task()
                 if not need_retry:
                     break
             await wait_a_bit(5)
@@ -360,7 +364,7 @@ class GalxeAccount:
                 cred_group = campaign['credentialGroups'][group_id]
                 need_retry = await self._complete_cred_group(campaign['id'], cred_group)
                 try_again = need_retry or try_again
-                await wait_a_bit(2)
+                await self._wait_new_task()
 
             if not try_again:
                 break
@@ -377,7 +381,7 @@ class GalxeAccount:
                         await self._complete_credential(campaign_id, condition, credential, False)
                     else:
                         raise exc
-                await wait_a_bit()
+                await self._wait_new_task()
             except Exception as e:
                 s_e = str(e)
                 if ('try again in 30 seconds' in s_e or 'please verify after 1 minutes' in s_e or
